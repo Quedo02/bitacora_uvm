@@ -1,0 +1,14 @@
+{
+  "name": "bitacora_uvm",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently --kill-others-on-fail -n FRONT,PHP \"npm --prefix frontend run dev\" \"php -S localhost:4444 -t backend/public\"",
+    "dev:front": "npm --prefix frontend run dev",
+    "dev:php": "php -S localhost:4444 -t backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
