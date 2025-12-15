@@ -1,23 +1,18 @@
 // src/pages/DocenteClaseDetalle.jsx
 import { useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api/axios';
 
 import Skeleton from '../components/ui/Skeleton';
 import Button from '../components/ui/Button';
-import Table from '../components/ui/Table';
-// Asumo que tienes un Input simple, si no, puedes quitar esta linea
-import Input from '../components/ui/Input'; 
+import Input from '../components/ui/Input';
 
 import {
   ArrowLeft,
   FileSpreadsheet,
-  BookOpen,
   Users,
   AlertCircle,
   Download,
-  UploadCloud,
-  Search
 } from 'lucide-react';
 
 function unwrapResponse(data) {
@@ -30,305 +25,354 @@ function safeArray(v) {
   return Array.isArray(v) ? v : [];
 }
 
-function Pill({ children, className = "" }) {
-  return (
-    <span className={`inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-700 ${className}`}>
-      {children}
-    </span>
-  );
-}
-
-function formatGrade(val) {
-  if (val === null || val === undefined || val === '') return '—';
-  const num = Number(val);
-  return isNaN(num) ? '—' : num.toFixed(2);
-}
-
-export default function DocenteClaseDetalle({ currentUser }) {
+export default function DocenteClaseDetalle() {
   const { seccionId } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
-
-  const roleId = Number(currentUser?.rol_id ?? currentUser?.role_id ?? 0);
-  const isAllowed = roleId === 3 || roleId === 4;
 
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  
-  // Estado local de la clase
-  const [clase, setClase] = useState(location.state?.clase ?? null);
-  
-  // Estado para las pestañas (1, 2, 3, final)
-  const [activeTab, setActiveTab] = useState('1'); 
+  const [error, setError] = useState(null);
+  const [data, setData] = useState(null);
   const [search, setSearch] = useState('');
+  const [activeTab, setActiveTab] = useState('Parcial 1');
 
-  // Carga de datos
-  async function loadClaseDetalle() {
-    setLoading(true);
-    setError('');
+  // Pestañas fijas
+  const TABS = ['Parcial 1', 'Parcial 2', 'Parcial 3', 'Final Semestral'];
+
+  const fetchData = async () => {
     try {
-      const { data } = await api.get(`/api/docente/clase/${seccionId}`);
-      const payload = unwrapResponse(data) || data || null;
-      setClase(payload?.clase ?? payload ?? null);
-    } catch (e) {
-      console.error(e);
-      setClase(null);
-      setError(
-        e?.response?.data?.response ||
-        'No fue posible cargar el detalle de la clase.'
-      );
+      setLoading(true);
+      setError(null);
+      const res = await api.get(`/api/docente/clase/${seccionId}`);
+      
+      if (res.data && res.data.ok) {
+        setData(res.data);
+      } else {
+        setError(unwrapResponse(res.data) || 'Error desconocido');
+      }
+    } catch (err) {
+      console.error(err);
+      setError(err?.response?.data?.response || 'Error de conexión');
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
-    if (!isAllowed) {
-      setLoading(false);
-      return;
-    }
-    // Si ya venía la info básica por navegación, la usamos primero para renderizar rápido
-    if (location.state?.clase && !clase) {
-      setClase(location.state.clase);
-    }
-    loadClaseDetalle();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAllowed, seccionId]);
+    if (seccionId) fetchData();
+  }, [seccionId]);
 
-  // --- LÓGICA DE DATOS ---
-
+  const clase = data?.clase;
   const alumnos = safeArray(clase?.alumnos);
-  
-  // Filtrado local por buscador
+  const componentes = safeArray(clase?.componentes);
+
+  // Filtrado de alumnos
   const filteredAlumnos = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return alumnos;
-    return alumnos.filter(a => 
-      String(a?.nombre ?? '').toLowerCase().includes(term) ||
-      String(a?.matricula ?? '').toLowerCase().includes(term)
+    if (!search) return alumnos;
+    const s = search.toLowerCase();
+    return alumnos.filter(
+      (a) =>
+        (a.nombre || '').toLowerCase().includes(s) ||
+        String(a.matricula || '').includes(s)
     );
   }, [alumnos, search]);
 
-  // Construcción de filas para la tabla
-  const rows = useMemo(() => {
-    return filteredAlumnos.map((a) => {
-      // AQUÍ: En el futuro, cuando tu backend soporte tabs, seleccionarás
-      // las calificaciones basándote en `activeTab`.
-      // Por ahora usamos las calificaciones generales que manda el backend.
-      const cal = a?.calificaciones || {};
+  // Estructura de columnas con agrupación
+  const tableStructure = useMemo(() => {
+    const estructuraMap = clase?.estructura_bitacora || {};
+    const currentStructure = estructuraMap[activeTab];
 
-      return {
-        id: a?.id,
-        nombre: a?.nombre ?? 'Sin nombre',
-        matricula: a?.matricula ?? '—',
-        correo: a?.correo ?? '—',
-        // Datos para las celdas de calificación
-        blackboard: cal.blackboard,
-        continua: cal.continua,
-        examen: cal.examen,
-        final: cal.final,
-      };
+    // Mapeo de componentes
+    const componentMap = {
+      blackboard: { label: 'Blackboard', abbr: 'BB' },
+      continua: { label: 'Evaluación Continua', abbr: 'EC' },
+      examen: { label: 'Examen', abbr: 'EX' }
+    };
+
+    const groups = [];
+
+    // Siempre mostramos los tres componentes principales
+    ['blackboard', 'continua', 'examen'].forEach(compKey => {
+      const compInfo = componentMap[compKey];
+      const peso = componentes.find(c => c.tipo === compKey)?.peso || 0;
+      const actividades = currentStructure?.[compKey] || [];
+
+      groups.push({
+        component: compKey,
+        label: compInfo.label,
+        abbr: compInfo.abbr,
+        peso: peso,
+        actividades: actividades,
+        // Si no hay actividades, mostramos solo una columna de resumen
+        columns: actividades.length > 0 ? actividades : []
+      });
     });
-  }, [filteredAlumnos, activeTab]); // Dependencia activeTab para recargar cuando cambie
 
-  // Definición de columnas
-  const columns = useMemo(() => [
-    { 
-      header: 'Alumno', 
-      accessor: 'nombre',
-      cell: (row) => (
-        <div className="flex flex-col">
-           <span className="font-medium text-slate-900">{row.nombre}</span>
-           <span className="text-[11px] text-slate-400 md:hidden">{row.matricula}</span>
-        </div>
-      )
-    },
-    { header: 'Matrícula', accessor: 'matricula', className: 'hidden md:table-cell w-32' },
-    
-    // Columnas de calificación (Dinámicas según la pestaña si quisieras cambiar headers)
-    { 
-      header: 'Blackboard (50%)', 
-      accessor: 'blackboard', 
-      width: '130px',
-      cell: (r) => <span className="font-mono text-slate-700">{formatGrade(r.blackboard)}</span>
-    },
-    { 
-      header: 'Eval. Cont. (20%)', 
-      accessor: 'continua', 
-      width: '130px',
-      cell: (r) => <span className="font-mono text-slate-700">{formatGrade(r.continua)}</span>
-    },
-    { 
-      header: 'Examen (30%)', 
-      accessor: 'examen', 
-      width: '110px',
-      cell: (r) => <span className="font-mono text-slate-700">{formatGrade(r.examen)}</span>
-    },
-    { 
-      header: 'Total Parcial', 
-      accessor: 'final', 
-      width: '110px',
-      cell: (r) => {
-        const val = Number(r.final);
-        const isFailing = !isNaN(val) && val < 70; // Ejemplo de regla visual
-        return (
-          <span className={`font-bold font-mono ${isFailing ? 'text-brand-red' : 'text-slate-900'}`}>
-            {formatGrade(r.final)}
-          </span>
-        );
-      }
-    }
-  ], []);
+    return groups;
+  }, [clase, activeTab, componentes]);
 
-  // --- RENDER ---
+  // Calcular colspan total para el header
+  const totalColumns = useMemo(() => {
+    return 2 + tableStructure.reduce((sum, group) => {
+      return sum + Math.max(1, group.columns.length);
+    }, 0);
+  }, [tableStructure]);
 
-  if (!isAllowed) {
-    return <div className="p-10 text-center text-slate-500">Acceso restringido.</div>;
+  // Preparar filas de datos
+  const rows = useMemo(() => {
+    return filteredAlumnos.map((alum) => {
+      const row = {
+        id: alum.id,
+        nombre: alum.nombre ?? 'Sin nombre',
+        matricula: alum.matricula ?? '—',
+        correo: alum.correo ?? '—',
+        components: {}
+      };
+
+      const bitacoraParcial = alum.bitacora?.[activeTab];
+
+      // Procesar cada componente
+      tableStructure.forEach(group => {
+        const compKey = group.component;
+        const actividadesData = bitacoraParcial?.[compKey] || [];
+        
+        row.components[compKey] = {
+          resumen: alum.resumen_calificaciones?.[compKey],
+          actividades: {}
+        };
+
+        // Mapear calificaciones por actividad_id
+        actividadesData.forEach(item => {
+          row.components[compKey].actividades[item.actividad_id] = item.calificacion_alumno;
+        });
+      });
+
+      return row;
+    });
+  }, [filteredAlumnos, activeTab, tableStructure]);
+
+  if (loading) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto space-y-6">
+        <Skeleton height={40} width="30%" />
+        <Skeleton height={200} />
+      </div>
+    );
   }
 
-  const tabs = [
-    { id: '1', label: 'Parcial 1' },
-    { id: '2', label: 'Parcial 2' },
-    { id: '3', label: 'Parcial 3' },
-    { id: 'final', label: 'Semestre' },
-  ];
-
   return (
-    <div className="px-1 py-2 space-y-5">
+    <div className="p-6 max-w-[98%] mx-auto space-y-6">
       
-      {/* 1. Header de Información de la Clase */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Button variant="outline_secondary" size="sm" onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
           <div>
-            <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate('/docente/clases')}
-                className="mb-2 -ml-2 text-slate-500 hover:text-slate-800"
-              >
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              Mis Clases
-            </Button>
-            
-            <h1 className="text-2xl font-bold text-slate-900">
-              {clase?.materia?.nombre ?? 'Cargando materia...'}
+            <h1 className="text-2xl font-bold text-slate-800">
+              {clase?.materia?.nombre || 'Detalle de Clase'}
             </h1>
-            
-            <div className="mt-2 flex flex-wrap gap-2 text-sm text-slate-500 items-center">
-              <span className="font-mono bg-slate-100 px-1.5 rounded text-slate-600">
-                {clase?.materia?.codigo}
+            <div className="flex items-center gap-2 text-sm text-slate-500 mt-1">
+              <span className="font-medium bg-brand-wine/10 text-brand-wine px-2 py-0.5 rounded">
+                {clase?.grupo}
               </span>
               <span>•</span>
               <span>{clase?.carrera?.nombre}</span>
               <span>•</span>
-              <div className="flex items-center gap-1">
-                <Users className="h-4 w-4" />
-                <span>{clase?.alumnos_count ?? alumnos.length} alumnos</span>
-              </div>
+              <span className="flex items-center gap-1">
+                <Users className="h-3 w-3" /> {clase?.alumnos_count} Alumnos
+              </span>
             </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-                {clase?.periodo && <Pill className="bg-blue-50 text-blue-700">{clase.periodo}</Pill>}
-                {clase?.grupo && <Pill>Grupo {clase.grupo}</Pill>}
-                {clase?.materia?.tipo_evaluacion && <Pill>Tipo: {clase.materia.tipo_evaluacion}</Pill>}
-                {clase?.seccion_estado === 'activa' && (
-                  <Pill className="bg-emerald-50 text-emerald-700">Activa</Pill>
-                )}
-            </div>
-          </div>
-          
-          {/* Botón de reporte general (opcional) */}
-          <div>
-            <Button variant="outline_secondary" size="sm" className="gap-2">
-               <Download className="h-4 w-4" />
-               Reporte Semestral
-            </Button>
           </div>
         </div>
-      </section>
 
-      {/* 2. Área de Trabajo (Tabs y Tabla) */}
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        
-        {/* Navegación de Pestañas */}
-        <div className="border-b border-slate-200 bg-slate-50/50 px-4 pt-4 flex gap-6 overflow-x-auto">
-          {tabs.map(tab => (
+        <Button variant="outline_primary" size="sm">
+          <Download className="h-4 w-4 mr-2" /> Exportar Excel
+        </Button>
+      </div>
+
+      {/* Tabs y Buscador */}
+      <div className="flex flex-col sm:flex-row items-end sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+        <div className="flex items-center gap-1 overflow-x-auto">
+          {TABS.map(tab => (
             <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`pb-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap px-1 ${
-                activeTab === tab.id
-                  ? 'border-brand-red text-brand-red'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              }`}
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors border-b-2 whitespace-nowrap
+                ${activeTab === tab 
+                  ? 'border-brand-red text-brand-red bg-red-50' 
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                }`}
             >
-              {tab.label}
+              {tab}
             </button>
           ))}
         </div>
 
-        {/* Toolbar de acciones (Importar, Buscar) */}
-        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white">
-            <div className="flex items-center gap-2 w-full sm:max-w-xs rounded-xl border border-slate-200 px-3 py-2 bg-slate-50 focus-within:bg-white focus-within:ring-1 focus-within:ring-brand-red/50 transition">
-              <Search className="h-4 w-4 text-slate-400" />
-              <input 
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Buscar alumno..." 
-                className="bg-transparent border-none outline-none text-sm w-full placeholder:text-slate-400"
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <Button variant="secondary" size="sm" className="gap-2" onClick={() => alert("Aquí abrirás el modal de Teams")}>
-                 <UploadCloud className="h-4 w-4" />
-                 <span className="hidden sm:inline">Importar</span> Teams
-              </Button>
-              <Button size="sm" className="gap-2" onClick={() => alert("Aquí abrirás el modal de Excel")}>
-                 <FileSpreadsheet className="h-4 w-4" />
-                 <span className="hidden sm:inline">Importar</span> Excel
-              </Button>
-            </div>
+        <div className="w-full sm:w-72">
+          <Input 
+            placeholder="Buscar alumno..." 
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
+      </div>
 
-        {/* Tabla */}
-        <div className="p-4">
-          {loading && <Skeleton rows={5} />}
-          
-          {!loading && error && (
-            <div className="p-4 bg-red-50 text-red-700 rounded-lg flex items-center gap-2">
-               <AlertCircle className="h-5 w-5" />
-               {error}
-            </div>
-          )}
-
-          {!loading && !error && (
-             <>
-               {rows.length > 0 ? (
-                 <Table columns={columns} data={rows} />
-               ) : (
-                 <div className="text-center py-10 text-slate-500">
-                   {search ? 'No se encontraron alumnos con ese criterio.' : 'No hay alumnos inscritos en este grupo.'}
-                 </div>
-               )}
-             </>
-          )}
+      {error && (
+        <div className="p-4 bg-red-50 text-red-700 rounded-lg flex items-center gap-2">
+          <AlertCircle className="h-5 w-5" />
+          {error}
         </div>
-        
-        {/* Footer de sección: Resumen de ponderaciones (informativo) */}
-        {clase?.componentes && (
-           <div className="bg-slate-50 px-4 py-3 border-t border-slate-200 text-xs text-slate-500 flex flex-wrap gap-4">
-              <span className="font-semibold text-slate-700">Ponderación actual:</span>
-              {safeArray(clase.componentes).map((c, i) => (
-                <span key={i} className="flex items-center gap-1">
-                   <span className="w-2 h-2 rounded-full bg-slate-300"></span>
-                   {c.tipo.toUpperCase()}: {c.peso}% 
-                   <span className="font-mono text-[10px] text-slate-400 ml-1">({c.crn})</span>
-                </span>
-              ))}
-           </div>
+      )}
+
+      {/* Tabla con columnas agrupadas */}
+      <div className="bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
+        {rows.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              {/* Header con agrupación */}
+              <thead>
+                {/* Primera fila: Grupos de componentes */}
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th rowSpan={2} className="px-3 py-2 text-left text-xs font-semibold text-slate-600 border-r border-slate-200">
+                    Matrícula
+                  </th>
+                  <th rowSpan={2} className="px-3 py-2 text-left text-xs font-semibold text-slate-600 border-r border-slate-200">
+                    Alumno
+                  </th>
+                  {tableStructure.map((group, idx) => {
+                    const colspan = Math.max(1, group.columns.length);
+                    return (
+                      <th 
+                        key={group.component}
+                        colSpan={colspan}
+                        className={`px-3 py-2 text-center text-xs font-bold text-slate-700 border-r border-slate-200 ${
+                          idx === tableStructure.length - 1 ? '' : 'border-r-2'
+                        }`}
+                      >
+                        <div className="flex flex-col items-center">
+                          <span>{group.label}</span>
+                          <span className="text-[10px] font-normal text-slate-500">
+                            {group.peso}% del total
+                          </span>
+                        </div>
+                      </th>
+                    );
+                  })}
+                </tr>
+
+                {/* Segunda fila: Actividades individuales */}
+                <tr className="border-b-2 border-slate-300 bg-slate-100">
+                  {tableStructure.map((group, groupIdx) => {
+                    // Si no hay actividades, mostramos una columna de promedio
+                    if (group.columns.length === 0) {
+                      return (
+                        <th 
+                          key={`${group.component}-promedio`}
+                          className="px-2 py-2 text-center text-xs font-medium text-slate-600 border-r border-slate-200"
+                        >
+                          <div className="flex flex-col items-center">
+                            <span>Promedio</span>
+                            <span className="text-[9px] text-slate-400">{group.abbr}</span>
+                          </div>
+                        </th>
+                      );
+                    }
+
+                    // Si hay actividades, mostramos cada una
+                    return group.columns.map((act, actIdx) => (
+                      <th 
+                        key={act.actividad_id}
+                        className={`px-2 py-2 text-center text-xs font-medium text-slate-600 ${
+                          actIdx === group.columns.length - 1 ? 'border-r border-slate-200' : ''
+                        }`}
+                      >
+                        <div className="flex flex-col items-center" title={act.nombre_actividad}>
+                          <span className="max-w-[120px] truncate">{act.nombre_actividad}</span>
+                          <span className="text-[9px] text-slate-400">
+                            {act.peso_actividad}% {group.abbr}
+                          </span>
+                        </div>
+                      </th>
+                    ));
+                  })}
+                </tr>
+              </thead>
+
+              {/* Body */}
+              <tbody>
+                {rows.map((row, rowIdx) => (
+                  <tr 
+                    key={row.id} 
+                    className="border-b border-slate-100 hover:bg-slate-50"
+                  >
+                    <td className="px-3 py-2.5 border-r border-slate-100 font-mono text-xs">
+                      {row.matricula}
+                    </td>
+                    <td className="px-3 py-2.5 border-r border-slate-200">
+                      <div className="flex flex-col">
+                        <span className="font-medium text-slate-900">{row.nombre}</span>
+                        <span className="text-xs text-slate-500">{row.correo}</span>
+                      </div>
+                    </td>
+
+                    {tableStructure.map((group, groupIdx) => {
+                      const compData = row.components[group.component];
+
+                      // Si no hay actividades, mostramos solo el promedio
+                      if (group.columns.length === 0) {
+                        const promedio = compData?.resumen;
+                        return (
+                          <td 
+                            key={`${group.component}-promedio`}
+                            className="px-2 py-2.5 text-center border-r border-slate-200"
+                          >
+                            <span className={`font-medium ${
+                              promedio != null && promedio < 60 ? 'text-red-600' : 'text-slate-700'
+                            }`}>
+                              {promedio != null ? promedio : '—'}
+                            </span>
+                          </td>
+                        );
+                      }
+
+                      // Si hay actividades, mostramos cada calificación
+                      return group.columns.map((act, actIdx) => {
+                        const calif = compData?.actividades?.[act.actividad_id];
+                        return (
+                          <td 
+                            key={act.actividad_id}
+                            className={`px-2 py-2.5 text-center ${
+                              actIdx === group.columns.length - 1 ? 'border-r border-slate-200' : ''
+                            }`}
+                          >
+                            <span className={`font-medium ${
+                              calif != null && calif < 60 ? 'text-red-600' : 'text-slate-700'
+                            }`}>
+                              {calif != null ? calif : '—'}
+                            </span>
+                          </td>
+                        );
+                      });
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="text-center py-16 text-slate-500">
+            <FileSpreadsheet className="h-12 w-12 mx-auto text-slate-300 mb-3" />
+            <p>{search ? 'No se encontraron alumnos.' : 'No hay alumnos inscritos.'}</p>
+          </div>
         )}
-      </section>
+      </div>
+
+      {/* Footer informativo */}
+      <div className="text-xs text-slate-500 space-y-1">
+        <p>* Las columnas agrupadas muestran el componente principal (BB, EC, EX) con sus actividades.</p>
+        <p>* Los pesos en las actividades son relativos a su componente. Los pesos del componente son sobre la calificación final.</p>
+      </div>
     </div>
   );
 }

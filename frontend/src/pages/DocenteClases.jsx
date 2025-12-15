@@ -44,7 +44,7 @@ function evalLabel(tipo) {
 export default function DocenteClases({ currentUser }) {
   const navigate = useNavigate();
   const roleId = Number(currentUser?.rol_id ?? currentUser?.role_id ?? 0);
-  const isAllowed = roleId === 3 || roleId === 4; // ✅ SOLO DOCENTES
+  const isAllowed = roleId === 2 || roleId === 3 || roleId === 4;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
