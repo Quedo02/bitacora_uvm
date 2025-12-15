@@ -6,21 +6,21 @@ class Materia extends ActiveRecord {
     protected static $primaryKey = 'id';
 
     protected static $columnasDB = [
-        'id', 'codigo_materia', 'nombre_materia', 'creditos',
+        'id', 'codigo_materia', 'nombre_materia', 'tipo_evaluacion',
         'estado', 'created_at', 'updated_at'
     ];
 
-    public $id, $codigo_materia, $nombre_materia, $creditos,
+    public $id, $codigo_materia, $nombre_materia, $tipo_evaluacion,
            $estado, $created_at, $updated_at;
 
     public function __construct($args = []) {
-        $this->id            = $args['id'] ?? null;
-        $this->codigo_materia = $args['codigo_materia'] ?? '';
-        $this->nombre_materia = $args['nombre_materia'] ?? '';
-        $this->creditos      = $args['creditos'] ?? null;
-        $this->estado        = $args['estado'] ?? 'activa';
-        $this->created_at    = $args['created_at'] ?? null;
-        $this->updated_at    = $args['updated_at'] ?? null;
+        $this->id              = $args['id'] ?? null;
+        $this->codigo_materia  = $args['codigo_materia'] ?? '';
+        $this->nombre_materia  = $args['nombre_materia'] ?? '';
+        $this->tipo_evaluacion = $args['tipo_evaluacion'] ?? 'teorica';
+        $this->estado          = $args['estado'] ?? 'activa';
+        $this->created_at      = $args['created_at'] ?? null;
+        $this->updated_at      = $args['updated_at'] ?? null;
     }
 
     public static function findByCodigo(string $codigo) {

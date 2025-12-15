@@ -1456,3 +1456,519 @@ LEFT JOIN calificacion_examen_final ef
        ON ef.inscripcion_id = i.id
 WHERE i.estado='inscrito'
 GROUP BY i.id, s.id, ef.calificacion;
+
+
+-- =========================================================
+--  ===================== QBANK / EXAMENES ==================
+--  (SE AGREGA AL FINAL. NO MODIFICA TUS DUMMIES EXISTENTES)
+-- =========================================================
+
+-- =========================================================
+--  QBANK 0) DOCENTE TC POR AREA (1 TC por área)
+-- =========================================================
+CREATE TABLE area_docente_tc (
+    area_id    INT UNSIGNED NOT NULL,
+    usuario_id INT UNSIGNED NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (area_id),
+    UNIQUE KEY ux_adtc_usuario (usuario_id),
+    CONSTRAINT fk_adtc_area FOREIGN KEY (area_id) REFERENCES area (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_adtc_usuario FOREIGN KEY (usuario_id) REFERENCES usuario (id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Dummy extra: TC para Salud (no toca tus dummies actuales)
+INSERT INTO usuario
+(id, rol_id, nombre_completo, correo, matricula, password_hash, estado, created_at, updated_at)
+VALUES
+(14, 3, 'Docente TC Salud Arturo', 'tc.salud@uvm.edu', 100136757,
+ '$2y$10$oYY3wqyPFkyN2nEUsXFktO.Xb9xKrXtTnS614ENDHifwAWn8jBrKq', 'activo', NOW(), NOW());
+
+INSERT INTO docente_profile (usuario_id, categoria, created_at, updated_at) VALUES
+(14, 'tiempo_completo', NOW(), NOW());
+
+INSERT INTO area_docente_tc (area_id, usuario_id, created_at, updated_at) VALUES
+(1, 4,  NOW(), NOW()),
+(2, 14, NOW(), NOW());
+
+-- =========================================================
+--  QBANK 0.1) MATERIA_AREA (materias compartidas por áreas)
+-- =========================================================
+CREATE TABLE materia_area (
+    materia_id        INT UNSIGNED NOT NULL,
+    area_id           INT UNSIGNED NOT NULL,
+    es_estandarizable TINYINT(1)   NOT NULL DEFAULT 1,
+    estado            ENUM('activa','inactiva') NOT NULL DEFAULT 'activa',
+    created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (materia_id, area_id),
+    KEY ix_ma_area (area_id),
+    CONSTRAINT fk_ma_materia FOREIGN KEY (materia_id) REFERENCES materia (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_ma_area FOREIGN KEY (area_id) REFERENCES area (id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Dummies: Ingeniería(1) = materias 1..4, Salud(2) = materias 5..8, Tronco común(9) = ambas
+-- es_estandarizable: 1 = sí se puede estandarizar; 0 = no (por naturaleza ambigua)
+INSERT INTO materia_area (materia_id, area_id, es_estandarizable, estado, created_at, updated_at) VALUES
+(1, 1, 1, 'activa', NOW(), NOW()),
+(2, 1, 1, 'activa', NOW(), NOW()),
+(3, 1, 1, 'activa', NOW(), NOW()),
+(4, 1, 1, 'activa', NOW(), NOW()),
+
+(5, 2, 1, 'activa', NOW(), NOW()),
+(6, 2, 1, 'activa', NOW(), NOW()),
+(7, 2, 0, 'activa', NOW(), NOW()),
+(8, 2, 0, 'activa', NOW(), NOW()),
+
+(9, 1, 1, 'activa', NOW(), NOW()),
+(9, 2, 1, 'activa', NOW(), NOW());
+
+-- =========================================================
+--  QBANK 1) TEMA (por materia y opcionalmente por parcial)
+-- =========================================================
+CREATE TABLE tema (
+    id         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    materia_id INT UNSIGNED NOT NULL,
+    parcial_id TINYINT UNSIGNED NULL,
+    nombre     VARCHAR(120) NOT NULL,
+    estado     ENUM('activo','inactivo') NOT NULL DEFAULT 'activo',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY ux_tema (materia_id, parcial_id, nombre),
+    KEY ix_tema_materia_parcial (materia_id, parcial_id),
+    CONSTRAINT fk_tema_materia FOREIGN KEY (materia_id) REFERENCES materia (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_tema_parcial FOREIGN KEY (parcial_id) REFERENCES parcial (id)
+        ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO tema (id, materia_id, parcial_id, nombre, estado, created_at, updated_at) VALUES
+(1, 2, 1, 'Fundamentos',        'activo', NOW(), NOW()),
+(2, 2, 1, 'Estructuras de control', 'activo', NOW(), NOW()),
+(3, 2, 2, 'Funciones',          'activo', NOW(), NOW()),
+(4, 2, 3, 'POO',                'activo', NOW(), NOW()),
+(5, 6, 1, 'Técnica básica',     'activo', NOW(), NOW()),
+(6, 6, 2, 'Materiales',         'activo', NOW(), NOW()),
+(7, 9, 1, 'Tronco común - básico','activo', NOW(), NOW());
+
+-- =========================================================
+--  QBANK 2) BANCO DE PREGUNTAS (base + versiones)
+-- =========================================================
+CREATE TABLE pregunta (
+    id                    BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    materia_id             INT UNSIGNED NOT NULL,
+    creada_por_usuario_id  INT UNSIGNED NOT NULL,
+    estado                 ENUM('pendiente','revision','aprobada','rechazada','archivada') NOT NULL DEFAULT 'pendiente',
+    version_actual_id      BIGINT UNSIGNED NULL,
+    created_at             DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at             DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY ix_preg_materia_estado (materia_id, estado),
+    CONSTRAINT fk_preg_materia FOREIGN KEY (materia_id) REFERENCES materia (id)
+        ON UPDATE CASCADE,
+    CONSTRAINT fk_preg_creador FOREIGN KEY (creada_por_usuario_id) REFERENCES usuario (id)
+        ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE pregunta_version (
+    id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    pregunta_id   BIGINT UNSIGNED NOT NULL,
+    version_num   INT UNSIGNED NOT NULL,
+    tipo          ENUM(
+        'opcion_multiple','verdadero_falso','abierta','relacionar',
+        'ordenar','completar','numerica'
+    ) NOT NULL,
+    enunciado     LONGTEXT NOT NULL,
+
+    dificultad    TINYINT UNSIGNED NOT NULL, -- 1..10
+    scope         ENUM('parcial','final') NOT NULL DEFAULT 'parcial',
+    parcial_id    TINYINT UNSIGNED NULL,
+
+    contenido_json LONGTEXT NOT NULL,
+    respuesta_json LONGTEXT NOT NULL,
+
+    estado        ENUM('pendiente','revision','aprobada','rechazada','archivada') NOT NULL DEFAULT 'pendiente',
+
+    created_by    INT UNSIGNED NOT NULL,
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY ux_pv (pregunta_id, version_num),
+    KEY ix_pv_filtro (tipo, dificultad, scope, parcial_id),
+    CONSTRAINT fk_pv_preg FOREIGN KEY (pregunta_id) REFERENCES pregunta (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_pv_parcial FOREIGN KEY (parcial_id) REFERENCES parcial (id)
+        ON UPDATE CASCADE,
+    CONSTRAINT fk_pv_created_by FOREIGN KEY (created_by) REFERENCES usuario (id)
+        ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- FK opcional para mantener coherencia entre pregunta.version_actual_id y pregunta_version.id
+ALTER TABLE pregunta
+    ADD CONSTRAINT fk_preg_version_actual
+    FOREIGN KEY (version_actual_id) REFERENCES pregunta_version (id)
+    ON DELETE SET NULL ON UPDATE CASCADE;
+
+CREATE TABLE pregunta_version_tema (
+    pregunta_version_id BIGINT UNSIGNED NOT NULL,
+    tema_id             INT UNSIGNED NOT NULL,
+    PRIMARY KEY (pregunta_version_id, tema_id),
+    KEY ix_pvt_tema (tema_id),
+    CONSTRAINT fk_pvt_pv FOREIGN KEY (pregunta_version_id) REFERENCES pregunta_version (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_pvt_tema FOREIGN KEY (tema_id) REFERENCES tema (id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE pregunta_version_area (
+    pregunta_version_id BIGINT UNSIGNED NOT NULL,
+    area_id             INT UNSIGNED NOT NULL,
+    PRIMARY KEY (pregunta_version_id, area_id),
+    KEY ix_pva_area (area_id),
+    CONSTRAINT fk_pva_pv FOREIGN KEY (pregunta_version_id) REFERENCES pregunta_version (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_pva_area FOREIGN KEY (area_id) REFERENCES area (id)
+        ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE pregunta_voto (
+    id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    pregunta_version_id BIGINT UNSIGNED NOT NULL,
+    area_id             INT UNSIGNED NULL,
+    votante_id          INT UNSIGNED NOT NULL,
+    decision            ENUM('aprobar','rechazar','revision') NOT NULL,
+    comentario          TEXT NULL,
+    created_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY ux_voto_unico (pregunta_version_id, votante_id),
+    KEY ix_voto_pv_area_dec (pregunta_version_id, area_id, decision),
+    CONSTRAINT fk_pvoto_pv FOREIGN KEY (pregunta_version_id) REFERENCES pregunta_version (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_pvoto_area FOREIGN KEY (area_id) REFERENCES area (id)
+        ON UPDATE CASCADE,
+    CONSTRAINT fk_pvoto_votante FOREIGN KEY (votante_id) REFERENCES usuario (id)
+        ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -------------------------
+--  QBANK 2.x DUMMIES PREGUNTAS + VERSIONES
+-- -------------------------
+
+-- Preguntas base
+INSERT INTO pregunta (id, materia_id, creada_por_usuario_id, estado, version_actual_id, created_at, updated_at) VALUES
+(1, 2, 4, 'aprobada', NULL, NOW(), NOW()), -- Programación I (docente_tc)
+(2, 2, 2, 'aprobada', NULL, NOW(), NOW()), -- Programación I (coordinador ing)
+(3, 2, 1, 'aprobada', NULL, NOW(), NOW()), -- Programación I (admin)
+(4, 6, 5, 'aprobada', NULL, NOW(), NOW()), -- Inyecciones (docente_general)
+(5, 6, 3, 'aprobada', NULL, NOW(), NOW()), -- Inyecciones (coordinador salud)
+(6, 9, 2, 'aprobada', NULL, NOW(), NOW()), -- Tronco común (coordinador ing)
+(7, 2, 4, 'revision', NULL, NOW(), NOW()); -- Programación I (en revisión)
+
+-- Versiones (1 de cada tipo mínimo)
+INSERT INTO pregunta_version
+(id, pregunta_id, version_num, tipo, enunciado, dificultad, scope, parcial_id, contenido_json, respuesta_json, estado, created_by, created_at, updated_at)
+VALUES
+(1, 1, 1, 'opcion_multiple',
+ '¿Cuál palabra clave declara una constante en JavaScript?',
+ 3, 'parcial', 1,
+ '{"opciones":["const","let","var","static"],"multiple":false}',
+ '{"correcta":[0]}',
+ 'aprobada', 4, NOW(), NOW()),
+
+(2, 2, 1, 'verdadero_falso',
+ 'En JavaScript, el operador "==" compara también el tipo de dato.',
+ 2, 'parcial', 1,
+ '{"enunciado_corto":"Comparación de igualdad"}',
+ '{"correcta":false}',
+ 'aprobada', 2, NOW(), NOW()),
+
+(3, 3, 1, 'completar',
+ 'Completa el espacio: for (let i = 0; i < ___; i++) { ... }',
+ 2, 'parcial', 1,
+ '{"blanks":[{"id":1,"placeholder":"___","tipo":"texto"}]}',
+ '{"blanks":[{"id":1,"valor":"n"}]}',
+ 'aprobada', 1, NOW(), NOW()),
+
+(4, 4, 1, 'relacionar',
+ 'Relaciona el material con su uso.',
+ 5, 'parcial', 1,
+ '{"pares":[{"izq":"Jeringa","der":["Aplicación intramuscular","Aplicación intravenosa","Toma de muestra"]},{"izq":"Guantes","der":["Protección","Medición","Incisión"]},{"izq":"Algodón","der":["Limpieza","Sutura","Diagnóstico"]}]}',
+ '{"correctas":[{"izq":"Jeringa","der":"Aplicación intramuscular"},{"izq":"Guantes","der":"Protección"},{"izq":"Algodón","der":"Limpieza"}]}',
+ 'aprobada', 5, NOW(), NOW()),
+
+(5, 5, 1, 'ordenar',
+ 'Ordena los pasos básicos para aplicar una inyección (de forma general).',
+ 6, 'parcial', 1,
+ '{"items":["Higienizar manos","Preparar material","Desinfectar zona","Aplicar inyección","Desechar material"]}',
+ '{"orden":[0,1,2,3,4]}',
+ 'aprobada', 3, NOW(), NOW()),
+
+(6, 6, 1, 'numerica',
+ 'Si en un examen sacas 80 y vale 30% del componente, ¿cuánto aporta al componente (en puntos porcentuales)?',
+ 4, 'parcial', 1,
+ '{"unidad":"puntos_porcentuales"}',
+ '{"valor":24.0,"tolerancia":0.5}',
+ 'aprobada', 2, NOW(), NOW()),
+
+(7, 7, 1, 'abierta',
+ 'Explica con tus palabras qué es una variable y da un ejemplo.',
+ 3, 'parcial', 1,
+ '{"rubrica":["Define variable","Da ejemplo válido"],"keywords":["valor","memoria","almacenar","let","const","var"]}',
+ '{"keywords":["valor","memoria","almacenar"],"min_hits":1}',
+ 'revision', 4, NOW(), NOW()),
+
+-- version 2 (ejemplo de versionado)
+(8, 1, 2, 'opcion_multiple',
+ '¿Cuál palabra clave declara una constante en JavaScript? (versión mejorada)',
+ 3, 'parcial', 1,
+ '{"opciones":["const","let","var"],"multiple":false}',
+ '{"correcta":[0]}',
+ 'aprobada', 4, NOW(), NOW());
+
+-- Version actual por pregunta (apunta a la última vigente)
+UPDATE pregunta SET version_actual_id = 8 WHERE id = 1;
+UPDATE pregunta SET version_actual_id = 2 WHERE id = 2;
+UPDATE pregunta SET version_actual_id = 3 WHERE id = 3;
+UPDATE pregunta SET version_actual_id = 4 WHERE id = 4;
+UPDATE pregunta SET version_actual_id = 5 WHERE id = 5;
+UPDATE pregunta SET version_actual_id = 6 WHERE id = 6;
+UPDATE pregunta SET version_actual_id = 7 WHERE id = 7;
+
+-- Relación versiones ↔ temas
+INSERT INTO pregunta_version_tema (pregunta_version_id, tema_id) VALUES
+(8, 1), -- q1 v2 -> Fundamentos
+(2, 2), -- vf -> Estructuras control
+(3, 2), -- completar -> Estructuras control
+(4, 5), -- relacionar -> Técnica básica
+(5, 5), -- ordenar -> Técnica básica
+(6, 7), -- numérica -> tronco común
+(7, 1); -- abierta -> Fundamentos
+
+-- Relación versiones ↔ áreas (congela el alcance por auditoría)
+INSERT INTO pregunta_version_area (pregunta_version_id, area_id) VALUES
+(1, 1), (8, 1), (2, 1), (3, 1), (7, 1),
+(4, 2), (5, 2),
+(6, 1), (6, 2);
+
+-- Votos (aprobación / revisión)
+-- Aprobación normal: Coordinador (área 1) + TC (área 1)
+INSERT INTO pregunta_voto (pregunta_version_id, area_id, votante_id, decision, comentario, created_at, updated_at) VALUES
+(8, 1, 2, 'aprobar', 'Correcta y clara.', NOW(), NOW()),
+(8, 1, 4, 'aprobar', 'Aprobada para parcial 1.', NOW(), NOW()),
+
+-- Aprobación Salud: Coordinador (área 2) + TC (área 2)
+(4, 2, 3,  'aprobar', 'Alineada a técnica básica.', NOW(), NOW()),
+(4, 2, 14, 'aprobar', 'Lista para banco estandarizado.', NOW(), NOW()),
+
+-- Caso multi-área: dos coordinadores
+(6, 1, 2, 'aprobar', 'Aprobación por coordinación Ing.', NOW(), NOW()),
+(6, 2, 3, 'aprobar', 'Aprobación por coordinación Salud.', NOW(), NOW()),
+
+-- En revisión (comentario obligatorio)
+(7, 1, 2, 'revision', 'Buena idea, pero pide un ejemplo más específico.', NOW(), NOW());
+
+-- =========================================================
+--  QBANK 3) EXAMENES POR SECCION + INTENTOS + RESPUESTAS
+-- =========================================================
+CREATE TABLE examen (
+    id               BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    seccion_id        INT UNSIGNED NOT NULL,
+    materia_id        INT UNSIGNED NOT NULL,
+    creado_por        INT UNSIGNED NOT NULL,
+
+    tipo              ENUM('parcial','final') NOT NULL,
+    parcial_id        TINYINT UNSIGNED NULL,
+
+    fecha_inicio      DATETIME NOT NULL,
+    duracion_min      SMALLINT UNSIGNED NOT NULL,
+    intentos_max      TINYINT UNSIGNED NOT NULL DEFAULT 1,
+
+    modo_armado       ENUM('manual','random') NOT NULL DEFAULT 'random',
+    num_preguntas     SMALLINT UNSIGNED NOT NULL,
+    dificultad_min    TINYINT UNSIGNED NOT NULL DEFAULT 1,
+    dificultad_max    TINYINT UNSIGNED NOT NULL DEFAULT 10,
+
+    mezclar_preguntas TINYINT(1) NOT NULL DEFAULT 1,
+    mezclar_opciones  TINYINT(1) NOT NULL DEFAULT 1,
+
+    estado            ENUM('borrador','programado','activo','cerrado','archivado') NOT NULL DEFAULT 'borrador',
+
+    created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    KEY ix_examen_seccion (seccion_id, tipo, parcial_id, estado),
+    CONSTRAINT fk_ex_seccion FOREIGN KEY (seccion_id) REFERENCES seccion (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_ex_materia FOREIGN KEY (materia_id) REFERENCES materia (id)
+        ON UPDATE CASCADE,
+    CONSTRAINT fk_ex_creado_por FOREIGN KEY (creado_por) REFERENCES usuario (id)
+        ON UPDATE CASCADE,
+    CONSTRAINT fk_ex_parcial FOREIGN KEY (parcial_id) REFERENCES parcial (id)
+        ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE examen_pregunta (
+    examen_id           BIGINT UNSIGNED NOT NULL,
+    pregunta_version_id BIGINT UNSIGNED NOT NULL,
+    puntos              DECIMAL(6,2) NOT NULL DEFAULT 1.00,
+    orden_base          SMALLINT UNSIGNED NOT NULL,
+    PRIMARY KEY (examen_id, pregunta_version_id),
+    KEY ix_ep_orden (examen_id, orden_base),
+    CONSTRAINT fk_ep_ex FOREIGN KEY (examen_id) REFERENCES examen (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_ep_pv FOREIGN KEY (pregunta_version_id) REFERENCES pregunta_version (id)
+        ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE examen_intento (
+    id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    examen_id      BIGINT UNSIGNED NOT NULL,
+    inscripcion_id INT UNSIGNED NOT NULL,
+    intento_num    TINYINT UNSIGNED NOT NULL,
+
+    inicio_real    DATETIME NULL,
+    fin_real       DATETIME NULL,
+
+    estado         ENUM('pendiente','en_progreso','enviado','revisado','anulado') NOT NULL DEFAULT 'pendiente',
+
+    calif_auto     DECIMAL(6,2) NULL,
+    calif_manual   DECIMAL(6,2) NULL,
+    calif_final    DECIMAL(6,2) NULL,
+
+    created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY ux_intento (examen_id, inscripcion_id, intento_num),
+    KEY ix_intento_insc (inscripcion_id),
+
+    CONSTRAINT fk_ei_ex FOREIGN KEY (examen_id) REFERENCES examen (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_ei_insc FOREIGN KEY (inscripcion_id) REFERENCES inscripcion (id)
+        ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE examen_intento_pregunta (
+    examen_intento_id    BIGINT UNSIGNED NOT NULL,
+    pregunta_version_id  BIGINT UNSIGNED NOT NULL,
+    orden                SMALLINT UNSIGNED NOT NULL,
+    opciones_orden_json  LONGTEXT NULL,
+    PRIMARY KEY (examen_intento_id, pregunta_version_id),
+    KEY ix_eip_orden (examen_intento_id, orden),
+    CONSTRAINT fk_eip_ei FOREIGN KEY (examen_intento_id) REFERENCES examen_intento (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_eip_pv FOREIGN KEY (pregunta_version_id) REFERENCES pregunta_version (id)
+        ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE examen_respuesta (
+    id                  BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    examen_intento_id    BIGINT UNSIGNED NOT NULL,
+    pregunta_version_id  BIGINT UNSIGNED NOT NULL,
+
+    respuesta_json       LONGTEXT NULL,
+    respuesta_texto      LONGTEXT NULL,
+
+    puntaje_auto         DECIMAL(6,2) NULL,
+    puntaje_manual       DECIMAL(6,2) NULL,
+    estado_revision      ENUM('pendiente','revisada') NOT NULL DEFAULT 'pendiente',
+    feedback             TEXT NULL,
+
+    created_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at           DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    UNIQUE KEY ux_resp (examen_intento_id, pregunta_version_id),
+
+    CONSTRAINT fk_er_ei FOREIGN KEY (examen_intento_id) REFERENCES examen_intento (id)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_er_pv FOREIGN KEY (pregunta_version_id) REFERENCES pregunta_version (id)
+        ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -------------------------
+--  QBANK 3.x DUMMIES EXAMENES
+-- -------------------------
+-- Examen Parcial 1 para Programación I en periodo activo (sección 12, docente 4 en tus dummies)
+INSERT INTO examen
+(id, seccion_id, materia_id, creado_por, tipo, parcial_id, fecha_inicio, duracion_min, intentos_max,
+ modo_armado, num_preguntas, dificultad_min, dificultad_max, mezclar_preguntas, mezclar_opciones, estado, created_at, updated_at)
+VALUES
+(1, 12, 2, 4, 'parcial', 1, '2025-11-15 10:00:00', 60, 2, 'random', 3, 1, 5, 1, 1, 'programado', NOW(), NOW());
+
+INSERT INTO examen_pregunta (examen_id, pregunta_version_id, puntos, orden_base) VALUES
+(1, 8, 1.00, 1),
+(1, 2, 1.00, 2),
+(1, 3, 1.00, 3);
+
+-- Intentos para alumnos de la sección 12 (inscripciones 35 y 36 en tus dummies)
+INSERT INTO examen_intento
+(id, examen_id, inscripcion_id, intento_num, inicio_real, fin_real, estado, calif_auto, calif_manual, calif_final, created_at, updated_at)
+VALUES
+(1, 1, 35, 1, '2025-11-15 10:00:00', '2025-11-15 10:45:00', 'enviado', 2.00, NULL, NULL, NOW(), NOW()),
+(2, 1, 36, 1, '2025-11-15 10:00:00', '2025-11-15 10:50:00', 'enviado', 3.00, NULL, NULL, NOW(), NOW()),
+(3, 1, 35, 2, '2025-11-16 10:00:00', '2025-11-16 10:40:00', 'enviado', 3.00, NULL, NULL, NOW(), NOW());
+
+-- Random orden por intento (y orden de opciones para la de opción múltiple)
+INSERT INTO examen_intento_pregunta (examen_intento_id, pregunta_version_id, orden, opciones_orden_json) VALUES
+(1, 2, 1, NULL),
+(1, 3, 2, NULL),
+(1, 8, 3, '{"opciones":[2,0,1]}' ),
+
+(2, 8, 1, '{"opciones":[1,2,0]}' ),
+(2, 2, 2, NULL),
+(2, 3, 3, NULL),
+
+(3, 3, 1, NULL),
+(3, 8, 2, '{"opciones":[0,2,1]}' ),
+(3, 2, 3, NULL);
+
+-- Respuestas (auto + pendiente de revisión manual)
+INSERT INTO examen_respuesta
+(examen_intento_id, pregunta_version_id, respuesta_json, respuesta_texto, puntaje_auto, puntaje_manual, estado_revision, feedback, created_at, updated_at)
+VALUES
+(1, 8, '{"seleccion":[0]}', NULL, 1.00, NULL, 'pendiente', NULL, NOW(), NOW()),
+(1, 2, '{"valor":false}',   NULL, 1.00, NULL, 'pendiente', NULL, NOW(), NOW()),
+(1, 3, '{"blanks":[{"id":1,"valor":"n"}]}', NULL, 0.00, NULL, 'pendiente', NULL, NOW(), NOW()),
+
+(2, 8, '{"seleccion":[0]}', NULL, 1.00, NULL, 'pendiente', NULL, NOW(), NOW()),
+(2, 2, '{"valor":false}',   NULL, 1.00, NULL, 'pendiente', NULL, NOW(), NOW()),
+(2, 3, '{"blanks":[{"id":1,"valor":"n"}]}', NULL, 1.00, NULL, 'pendiente', NULL, NOW(), NOW());
+
+-- Examen Parcial 1 para Inyecciones (sección 16, docente 5 en tus dummies)
+INSERT INTO examen
+(id, seccion_id, materia_id, creado_por, tipo, parcial_id, fecha_inicio, duracion_min, intentos_max,
+ modo_armado, num_preguntas, dificultad_min, dificultad_max, mezclar_preguntas, mezclar_opciones, estado, created_at, updated_at)
+VALUES
+(2, 16, 6, 5, 'parcial', 1, '2025-11-20 12:00:00', 50, 1, 'random', 2, 3, 8, 1, 1, 'programado', NOW(), NOW());
+
+INSERT INTO examen_pregunta (examen_id, pregunta_version_id, puntos, orden_base) VALUES
+(2, 4, 1.00, 1),
+(2, 5, 1.00, 2);
+
+-- Intentos para alumnos de la sección 16 (inscripciones 43 y 44 en tus dummies)
+INSERT INTO examen_intento
+(id, examen_id, inscripcion_id, intento_num, inicio_real, fin_real, estado, calif_auto, calif_manual, calif_final, created_at, updated_at)
+VALUES
+(4, 2, 43, 1, '2025-11-20 12:00:00', '2025-11-20 12:40:00', 'enviado', 2.00, NULL, NULL, NOW(), NOW()),
+(5, 2, 44, 1, '2025-11-20 12:00:00', '2025-11-20 12:45:00', 'enviado', 1.00, NULL, NULL, NOW(), NOW());
+
+INSERT INTO examen_intento_pregunta (examen_intento_id, pregunta_version_id, orden, opciones_orden_json) VALUES
+(4, 5, 1, '{"items":[4,1,0,3,2]}' ),
+(4, 4, 2, NULL),
+(5, 4, 1, NULL),
+(5, 5, 2, '{"items":[0,1,2,3,4]}' );
+
+INSERT INTO examen_respuesta
+(examen_intento_id, pregunta_version_id, respuesta_json, respuesta_texto, puntaje_auto, puntaje_manual, estado_revision, feedback, created_at, updated_at)
+VALUES
+(4, 4, '{"correctas":[{"izq":"Jeringa","der":"Aplicación intramuscular"},{"izq":"Guantes","der":"Protección"},{"izq":"Algodón","der":"Limpieza"}]}', NULL, 1.00, NULL, 'pendiente', NULL, NOW(), NOW()),
+(4, 5, '{"orden":[0,1,2,3,4]}', NULL, 1.00, NULL, 'pendiente', NULL, NOW(), NOW());
