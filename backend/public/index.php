@@ -8,6 +8,8 @@ use Controllers\LoginController;
 use Controllers\ApiController;
 use Controllers\CoordinacionController;
 use Controllers\DocenteController;
+use Controllers\BancoController;
+use Controllers\ExamenController;
 
 $router = new Router();
 
@@ -53,6 +55,56 @@ $router->group(function(Router $router){
   $router->get('/api/docente/clases', [DocenteController::class, 'getClases']);
   $router->get('/api/docente/clases/{codigo_periodo}', [DocenteController::class, 'getClases']);
   $router->get('/api/docente/clase/{seccion_id}', [DocenteController::class, 'getClaseDetalle']);
+
+  // ===== BANCO (QBANK) =====
+  $router->options('/api/banco/{recurso}', function(){}, []);
+  $router->options('/api/banco/{recurso}/{id}', function(){}, []);
+  $router->options('/api/banco/{recurso}/{id}/{sub}', function(){}, []);
+
+  $router->get('/api/banco/materias', [BancoController::class, 'getMateriasPermitidas']);
+  $router->get('/api/banco/materia/{materia_id}/temas', [BancoController::class, 'getTemasMateria']);
+  $router->post('/api/banco/materia/{materia_id}/temas', [BancoController::class, 'createTema']);
+  $router->put('/api/banco/tema/{tema_id}', [BancoController::class, 'updateTema']);
+  $router->delete('/api/banco/tema/{tema_id}', [BancoController::class, 'deleteTema']);
+
+  $router->get('/api/banco/preguntas', [BancoController::class, 'getPreguntas']);
+  $router->post('/api/banco/preguntas', [BancoController::class, 'createPregunta']);
+  $router->get('/api/banco/pregunta/{pregunta_id}', [BancoController::class, 'getPreguntaDetalle']);
+  $router->post('/api/banco/pregunta/{pregunta_id}/version', [BancoController::class, 'createVersion']);
+  $router->get('/api/banco/pregunta/{pregunta_id}/versiones', [BancoController::class, 'getVersiones']);
+
+  $router->get('/api/banco/aprobaciones/pendientes', [BancoController::class, 'getPendientesAprobar']);
+  $router->post('/api/banco/version/{pregunta_version_id}/voto', [BancoController::class, 'votarVersion']);
+  $router->get('/api/banco/version/{pregunta_version_id}/votos', [BancoController::class, 'getVotosVersion']);
+
+  $router->delete('/api/banco/pregunta/{pregunta_id}', [BancoController::class, 'deletePregunta']); // admin
+
+  // ===== EXAMENES =====
+  $router->options('/api/examenes/{recurso}', function(){}, []);
+  $router->options('/api/examenes/{recurso}/{id}', function(){}, []);
+  $router->options('/api/examenes/{recurso}/{id}/{sub}', function(){}, []);
+
+  $router->get('/api/examenes/seccion/{seccion_id}', [ExamenController::class, 'getExamenesSeccion']);
+  $router->post('/api/examenes/seccion/{seccion_id}', [ExamenController::class, 'createExamen']);
+
+  $router->get('/api/examenes/examen/{examen_id}', [ExamenController::class, 'getExamenDetalle']);
+  $router->put('/api/examenes/examen/{examen_id}', [ExamenController::class, 'updateExamen']);
+  $router->delete('/api/examenes/examen/{examen_id}', [ExamenController::class, 'deleteExamen']);
+
+  $router->post('/api/examenes/examen/{examen_id}/armar', [ExamenController::class, 'armarExamen']);
+  $router->post('/api/examenes/examen/{examen_id}/publicar', [ExamenController::class, 'publicarExamen']);
+  $router->post('/api/examenes/examen/{examen_id}/cerrar', [ExamenController::class, 'cerrarExamen']);
+
+  $router->get('/api/examenes/mis-examenes', [ExamenController::class, 'getMisExamenes']);
+  $router->post('/api/examenes/examen/{examen_id}/iniciar', [ExamenController::class, 'iniciarIntento']);
+  $router->post('/api/examenes/intento/{intento_id}/responder', [ExamenController::class, 'guardarRespuesta']);
+  $router->post('/api/examenes/intento/{intento_id}/finalizar', [ExamenController::class, 'finalizarIntento']);
+  $router->get('/api/examenes/intento/{intento_id}', [ExamenController::class, 'getIntento']);
+
+  $router->get('/api/examenes/examen/{examen_id}/intentos', [ExamenController::class, 'getIntentosExamen']);
+  $router->get('/api/examenes/intento/{intento_id}/detalle', [ExamenController::class, 'getIntentoDetalle']);
+  $router->post('/api/examenes/intento/{intento_id}/calificar', [ExamenController::class, 'calificarIntento']);
+  $router->post('/api/examenes/intento/{intento_id}/aplicar-bitacora', [ExamenController::class, 'aplicarCalificacionBitacora']);
 
 });
 

@@ -5,7 +5,8 @@ import {
   LayoutDashboard,
   Users,
   LogOut,
-  BookOpen
+  BookOpen,
+  ClipboardList
 } from 'lucide-react';
 
 const roleName = {
@@ -18,6 +19,7 @@ const roleName = {
 
 const coordinacion = (roleId) => roleId === 2;
 const docente = (roleId) => roleId === 2 || roleId === 3 || roleId === 4;
+const qbank = (roleId) => roleId === 1 || roleId === 2 || roleId === 3 || roleId === 4;
 
 
 
@@ -81,12 +83,27 @@ export default function Sidebar({ user, onLogout }) {
             </li>
           )}
 
-          {docente(roleId) && (
+          {qbank(roleId) && (
             <li>
-              <NavItem to="/docente/clases" icon={BookOpen}>
-                Mis clases
+              <NavItem to="/banco" icon={BookOpen}>
+                Banco de preguntas
               </NavItem>
             </li>
+          )}
+
+          {docente(roleId) && (
+            <>
+              <li>
+                <NavItem to="/docente/clases" icon={BookOpen}>
+                  Mis clases
+                </NavItem>
+              </li>
+              <li>
+                <NavItem to="/examenes" icon={ClipboardList}>
+                  Exámenes
+                </NavItem>
+              </li>
+            </>
           )}
         </ul>
       </nav>

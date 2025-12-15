@@ -9,6 +9,8 @@ import CoordinacionDashboard from './pages/CoordinacionDashboard.jsx';
 import CoordinacionPersonas from './pages/CoordinacionPersonas.jsx';
 import DocenteClases from './pages/DocenteClases.jsx';
 import DocenteClaseDetalle from './pages/DocenteClaseDetalle.jsx';
+import BancoPreguntas from './pages/BancoPreguntas.jsx';
+import ExamenesDashboard from './pages/ExamenesDashboard.jsx';
 
 function unwrapUser(data) {
   if (!data) return null;
@@ -86,6 +88,26 @@ export default function App() {
           <Route
             path="docente/clases/:seccionId"
             element={<DocenteClaseDetalle currentUser={user} />}
+          />
+          <Route
+            path="banco"
+            element={<BancoPreguntas currentUser={user} />}
+          />
+          <Route
+            path="coordinacion/banco"
+            element={<BancoPreguntas currentUser={user} />}
+          />
+          <Route
+            path="examenes"
+            element={<ExamenesDashboard currentUser={user} />}
+          />
+          <Route
+            path="docente/examenes"
+            element={<ExamenesDashboard currentUser={user} />}
+          />
+          <Route
+            path="docente/examenes/:seccionId"
+            element={<ExamenesDashboard currentUser={user} />}
           />
         </Route>
       </Routes>
