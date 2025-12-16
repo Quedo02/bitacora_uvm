@@ -1548,13 +1548,41 @@ CREATE TABLE tema (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO tema (id, materia_id, parcial_id, nombre, estado, created_at, updated_at) VALUES
-(1, 2, 1, 'Fundamentos',        'activo', NOW(), NOW()),
-(2, 2, 1, 'Estructuras de control', 'activo', NOW(), NOW()),
-(3, 2, 2, 'Funciones',          'activo', NOW(), NOW()),
-(4, 2, 3, 'POO',                'activo', NOW(), NOW()),
-(5, 6, 1, 'Técnica básica',     'activo', NOW(), NOW()),
-(6, 6, 2, 'Materiales',         'activo', NOW(), NOW()),
-(7, 9, 1, 'Tronco común - básico','activo', NOW(), NOW());
+(1, 1, 1, 'Fundamentos de bases de datos', 'activo', NOW(), NOW()),
+(2, 1, 2, 'Relaciones', 'activo', NOW(), NOW()),
+(3, 1, 3, 'Llaves foraneas', 'activo', NOW(), NOW()),
+
+(4, 2, 1, 'Logica de programacion', 'activo', NOW(), NOW()),
+(5, 2, 2, 'POO', 'activo', NOW(), NOW()),
+(6, 2, 3, 'Concurrencia', 'activo', NOW(), NOW()),
+
+(7, 3, 1, 'Compuertas','activo', NOW(), NOW()),
+(8, 3, 2, 'Magnetismo','activo', NOW(), NOW()),
+(9, 3, 3, 'Robotica','activo', NOW(), NOW()),
+
+(10, 4, 1, 'Compuertas I','activo', NOW(), NOW()),
+(11, 4, 2, 'Compuertas II','activo', NOW(), NOW()),
+(12, 4, 3, 'Compuertas III','activo', NOW(), NOW()),
+
+(13, 5, 1, 'Anatomia I','activo', NOW(), NOW()),
+(14, 5, 2, 'Anatomia II','activo', NOW(), NOW()),
+(15, 5, 3, 'Anatomia III','activo', NOW(), NOW()),
+
+(16, 6, 1, 'Inyecciones I','activo', NOW(), NOW()),
+(17, 6, 2, 'Inyecciones II','activo', NOW(), NOW()),
+(18, 6, 3, 'Inyecciones III','activo', NOW(), NOW()),
+
+(19, 7, 1, 'Comidas I','activo', NOW(), NOW()),
+(20, 7, 2, 'Comidas II','activo', NOW(), NOW()),
+(21, 7, 3, 'Comidas III','activo', NOW(), NOW()),
+
+(22, 8, 1, 'Ejercicios I','activo', NOW(), NOW()),
+(23, 8, 2, 'Ejercicios II','activo', NOW(), NOW()),
+(24, 8, 3, 'Ejercicios III','activo', NOW(), NOW()),
+
+(25, 9, 1, 'Tronco comun I','activo', NOW(), NOW()),
+(26, 9, 2, 'Tronco comun II','activo', NOW(), NOW()),
+(27, 9, 3, 'Tronco comun III','activo', NOW(), NOW());
 
 -- =========================================================
 --  QBANK 2) BANCO DE PREGUNTAS (base + versiones)
@@ -1657,122 +1685,6 @@ CREATE TABLE pregunta_voto (
         ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- -------------------------
---  QBANK 2.x DUMMIES PREGUNTAS + VERSIONES
--- -------------------------
-
--- Preguntas base
-INSERT INTO pregunta (id, materia_id, creada_por_usuario_id, estado, version_actual_id, created_at, updated_at) VALUES
-(1, 2, 4, 'aprobada', NULL, NOW(), NOW()), -- Programación I (docente_tc)
-(2, 2, 2, 'aprobada', NULL, NOW(), NOW()), -- Programación I (coordinador ing)
-(3, 2, 1, 'aprobada', NULL, NOW(), NOW()), -- Programación I (admin)
-(4, 6, 5, 'aprobada', NULL, NOW(), NOW()), -- Inyecciones (docente_general)
-(5, 6, 3, 'aprobada', NULL, NOW(), NOW()), -- Inyecciones (coordinador salud)
-(6, 9, 2, 'aprobada', NULL, NOW(), NOW()), -- Tronco común (coordinador ing)
-(7, 2, 4, 'revision', NULL, NOW(), NOW()); -- Programación I (en revisión)
-
--- Versiones (1 de cada tipo mínimo)
-INSERT INTO pregunta_version
-(id, pregunta_id, version_num, tipo, enunciado, dificultad, scope, parcial_id, contenido_json, respuesta_json, estado, created_by, created_at, updated_at)
-VALUES
-(1, 1, 1, 'opcion_multiple',
- '¿Cuál palabra clave declara una constante en JavaScript?',
- 3, 'parcial', 1,
- '{"opciones":["const","let","var","static"],"multiple":false}',
- '{"correcta":[0]}',
- 'aprobada', 4, NOW(), NOW()),
-
-(2, 2, 1, 'verdadero_falso',
- 'En JavaScript, el operador "==" compara también el tipo de dato.',
- 2, 'parcial', 1,
- '{"enunciado_corto":"Comparación de igualdad"}',
- '{"correcta":false}',
- 'aprobada', 2, NOW(), NOW()),
-
-(3, 3, 1, 'completar',
- 'Completa el espacio: for (let i = 0; i < ___; i++) { ... }',
- 2, 'parcial', 1,
- '{"blanks":[{"id":1,"placeholder":"___","tipo":"texto"}]}',
- '{"blanks":[{"id":1,"valor":"n"}]}',
- 'aprobada', 1, NOW(), NOW()),
-
-(4, 4, 1, 'relacionar',
- 'Relaciona el material con su uso.',
- 5, 'parcial', 1,
- '{"pares":[{"izq":"Jeringa","der":["Aplicación intramuscular","Aplicación intravenosa","Toma de muestra"]},{"izq":"Guantes","der":["Protección","Medición","Incisión"]},{"izq":"Algodón","der":["Limpieza","Sutura","Diagnóstico"]}]}',
- '{"correctas":[{"izq":"Jeringa","der":"Aplicación intramuscular"},{"izq":"Guantes","der":"Protección"},{"izq":"Algodón","der":"Limpieza"}]}',
- 'aprobada', 5, NOW(), NOW()),
-
-(5, 5, 1, 'ordenar',
- 'Ordena los pasos básicos para aplicar una inyección (de forma general).',
- 6, 'parcial', 1,
- '{"items":["Higienizar manos","Preparar material","Desinfectar zona","Aplicar inyección","Desechar material"]}',
- '{"orden":[0,1,2,3,4]}',
- 'aprobada', 3, NOW(), NOW()),
-
-(6, 6, 1, 'numerica',
- 'Si en un examen sacas 80 y vale 30% del componente, ¿cuánto aporta al componente (en puntos porcentuales)?',
- 4, 'parcial', 1,
- '{"unidad":"puntos_porcentuales"}',
- '{"valor":24.0,"tolerancia":0.5}',
- 'aprobada', 2, NOW(), NOW()),
-
-(7, 7, 1, 'abierta',
- 'Explica con tus palabras qué es una variable y da un ejemplo.',
- 3, 'parcial', 1,
- '{"rubrica":["Define variable","Da ejemplo válido"],"keywords":["valor","memoria","almacenar","let","const","var"]}',
- '{"keywords":["valor","memoria","almacenar"],"min_hits":1}',
- 'revision', 4, NOW(), NOW()),
-
--- version 2 (ejemplo de versionado)
-(8, 1, 2, 'opcion_multiple',
- '¿Cuál palabra clave declara una constante en JavaScript? (versión mejorada)',
- 3, 'parcial', 1,
- '{"opciones":["const","let","var"],"multiple":false}',
- '{"correcta":[0]}',
- 'aprobada', 4, NOW(), NOW());
-
--- Version actual por pregunta (apunta a la última vigente)
-UPDATE pregunta SET version_actual_id = 8 WHERE id = 1;
-UPDATE pregunta SET version_actual_id = 2 WHERE id = 2;
-UPDATE pregunta SET version_actual_id = 3 WHERE id = 3;
-UPDATE pregunta SET version_actual_id = 4 WHERE id = 4;
-UPDATE pregunta SET version_actual_id = 5 WHERE id = 5;
-UPDATE pregunta SET version_actual_id = 6 WHERE id = 6;
-UPDATE pregunta SET version_actual_id = 7 WHERE id = 7;
-
--- Relación versiones ↔ temas
-INSERT INTO pregunta_version_tema (pregunta_version_id, tema_id) VALUES
-(8, 1), -- q1 v2 -> Fundamentos
-(2, 2), -- vf -> Estructuras control
-(3, 2), -- completar -> Estructuras control
-(4, 5), -- relacionar -> Técnica básica
-(5, 5), -- ordenar -> Técnica básica
-(6, 7), -- numérica -> tronco común
-(7, 1); -- abierta -> Fundamentos
-
--- Relación versiones ↔ áreas (congela el alcance por auditoría)
-INSERT INTO pregunta_version_area (pregunta_version_id, area_id) VALUES
-(1, 1), (8, 1), (2, 1), (3, 1), (7, 1),
-(4, 2), (5, 2),
-(6, 1), (6, 2);
-
--- Votos (aprobación / revisión)
--- Aprobación normal: Coordinador (área 1) + TC (área 1)
-INSERT INTO pregunta_voto (pregunta_version_id, area_id, votante_id, decision, comentario, created_at, updated_at) VALUES
-(8, 1, 2, 'aprobar', 'Correcta y clara.', NOW(), NOW()),
-(8, 1, 4, 'aprobar', 'Aprobada para parcial 1.', NOW(), NOW()),
-
--- Aprobación Salud: Coordinador (área 2) + TC (área 2)
-(4, 2, 3,  'aprobar', 'Alineada a técnica básica.', NOW(), NOW()),
-(4, 2, 14, 'aprobar', 'Lista para banco estandarizado.', NOW(), NOW()),
-
--- Caso multi-área: dos coordinadores
-(6, 1, 2, 'aprobar', 'Aprobación por coordinación Ing.', NOW(), NOW()),
-(6, 2, 3, 'aprobar', 'Aprobación por coordinación Salud.', NOW(), NOW()),
-
--- En revisión (comentario obligatorio)
-(7, 1, 2, 'revision', 'Buena idea, pero pide un ejemplo más específico.', NOW(), NOW());
 
 -- =========================================================
 --  QBANK 3) EXAMENES POR SECCION + INTENTOS + RESPUESTAS
@@ -1893,82 +1805,3 @@ CREATE TABLE examen_respuesta (
     CONSTRAINT fk_er_pv FOREIGN KEY (pregunta_version_id) REFERENCES pregunta_version (id)
         ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- -------------------------
---  QBANK 3.x DUMMIES EXAMENES
--- -------------------------
--- Examen Parcial 1 para Programación I en periodo activo (sección 12, docente 4 en tus dummies)
-INSERT INTO examen
-(id, seccion_id, materia_id, creado_por, tipo, parcial_id, fecha_inicio, duracion_min, intentos_max,
- modo_armado, num_preguntas, dificultad_min, dificultad_max, mezclar_preguntas, mezclar_opciones, estado, created_at, updated_at)
-VALUES
-(1, 12, 2, 4, 'parcial', 1, '2025-11-15 10:00:00', 60, 2, 'random', 3, 1, 5, 1, 1, 'programado', NOW(), NOW());
-
-INSERT INTO examen_pregunta (examen_id, pregunta_version_id, puntos, orden_base) VALUES
-(1, 8, 1.00, 1),
-(1, 2, 1.00, 2),
-(1, 3, 1.00, 3);
-
--- Intentos para alumnos de la sección 12 (inscripciones 35 y 36 en tus dummies)
-INSERT INTO examen_intento
-(id, examen_id, inscripcion_id, intento_num, inicio_real, fin_real, estado, calif_auto, calif_manual, calif_final, created_at, updated_at)
-VALUES
-(1, 1, 35, 1, '2025-11-15 10:00:00', '2025-11-15 10:45:00', 'enviado', 2.00, NULL, NULL, NOW(), NOW()),
-(2, 1, 36, 1, '2025-11-15 10:00:00', '2025-11-15 10:50:00', 'enviado', 3.00, NULL, NULL, NOW(), NOW()),
-(3, 1, 35, 2, '2025-11-16 10:00:00', '2025-11-16 10:40:00', 'enviado', 3.00, NULL, NULL, NOW(), NOW());
-
--- Random orden por intento (y orden de opciones para la de opción múltiple)
-INSERT INTO examen_intento_pregunta (examen_intento_id, pregunta_version_id, orden, opciones_orden_json) VALUES
-(1, 2, 1, NULL),
-(1, 3, 2, NULL),
-(1, 8, 3, '{"opciones":[2,0,1]}' ),
-
-(2, 8, 1, '{"opciones":[1,2,0]}' ),
-(2, 2, 2, NULL),
-(2, 3, 3, NULL),
-
-(3, 3, 1, NULL),
-(3, 8, 2, '{"opciones":[0,2,1]}' ),
-(3, 2, 3, NULL);
-
--- Respuestas (auto + pendiente de revisión manual)
-INSERT INTO examen_respuesta
-(examen_intento_id, pregunta_version_id, respuesta_json, respuesta_texto, puntaje_auto, puntaje_manual, estado_revision, feedback, created_at, updated_at)
-VALUES
-(1, 8, '{"seleccion":[0]}', NULL, 1.00, NULL, 'pendiente', NULL, NOW(), NOW()),
-(1, 2, '{"valor":false}',   NULL, 1.00, NULL, 'pendiente', NULL, NOW(), NOW()),
-(1, 3, '{"blanks":[{"id":1,"valor":"n"}]}', NULL, 0.00, NULL, 'pendiente', NULL, NOW(), NOW()),
-
-(2, 8, '{"seleccion":[0]}', NULL, 1.00, NULL, 'pendiente', NULL, NOW(), NOW()),
-(2, 2, '{"valor":false}',   NULL, 1.00, NULL, 'pendiente', NULL, NOW(), NOW()),
-(2, 3, '{"blanks":[{"id":1,"valor":"n"}]}', NULL, 1.00, NULL, 'pendiente', NULL, NOW(), NOW());
-
--- Examen Parcial 1 para Inyecciones (sección 16, docente 5 en tus dummies)
-INSERT INTO examen
-(id, seccion_id, materia_id, creado_por, tipo, parcial_id, fecha_inicio, duracion_min, intentos_max,
- modo_armado, num_preguntas, dificultad_min, dificultad_max, mezclar_preguntas, mezclar_opciones, estado, created_at, updated_at)
-VALUES
-(2, 16, 6, 5, 'parcial', 1, '2025-11-20 12:00:00', 50, 1, 'random', 2, 3, 8, 1, 1, 'programado', NOW(), NOW());
-
-INSERT INTO examen_pregunta (examen_id, pregunta_version_id, puntos, orden_base) VALUES
-(2, 4, 1.00, 1),
-(2, 5, 1.00, 2);
-
--- Intentos para alumnos de la sección 16 (inscripciones 43 y 44 en tus dummies)
-INSERT INTO examen_intento
-(id, examen_id, inscripcion_id, intento_num, inicio_real, fin_real, estado, calif_auto, calif_manual, calif_final, created_at, updated_at)
-VALUES
-(4, 2, 43, 1, '2025-11-20 12:00:00', '2025-11-20 12:40:00', 'enviado', 2.00, NULL, NULL, NOW(), NOW()),
-(5, 2, 44, 1, '2025-11-20 12:00:00', '2025-11-20 12:45:00', 'enviado', 1.00, NULL, NULL, NOW(), NOW());
-
-INSERT INTO examen_intento_pregunta (examen_intento_id, pregunta_version_id, orden, opciones_orden_json) VALUES
-(4, 5, 1, '{"items":[4,1,0,3,2]}' ),
-(4, 4, 2, NULL),
-(5, 4, 1, NULL),
-(5, 5, 2, '{"items":[0,1,2,3,4]}' );
-
-INSERT INTO examen_respuesta
-(examen_intento_id, pregunta_version_id, respuesta_json, respuesta_texto, puntaje_auto, puntaje_manual, estado_revision, feedback, created_at, updated_at)
-VALUES
-(4, 4, '{"correctas":[{"izq":"Jeringa","der":"Aplicación intramuscular"},{"izq":"Guantes","der":"Protección"},{"izq":"Algodón","der":"Limpieza"}]}', NULL, 1.00, NULL, 'pendiente', NULL, NOW(), NOW()),
-(4, 5, '{"orden":[0,1,2,3,4]}', NULL, 1.00, NULL, 'pendiente', NULL, NOW(), NOW());

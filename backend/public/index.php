@@ -56,7 +56,7 @@ $router->group(function(Router $router){
   $router->get('/api/docente/clases/{codigo_periodo}', [DocenteController::class, 'getClases']);
   $router->get('/api/docente/clase/{seccion_id}', [DocenteController::class, 'getClaseDetalle']);
 
-  // ===== BANCO (QBANK) =====
+  // ===== BANCO =====
   $router->options('/api/banco/{recurso}', function(){}, []);
   $router->options('/api/banco/{recurso}/{id}', function(){}, []);
   $router->options('/api/banco/{recurso}/{id}/{sub}', function(){}, []);

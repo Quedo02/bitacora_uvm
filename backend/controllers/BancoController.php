@@ -150,7 +150,7 @@ class BancoController {
 
             // Docente TC/General: solo materias que imparte en periodo activo
             if (self::isDocente()) {
-                $q = "SELECT DISTINCT m.id, m.codigo, m.nombre
+                $q = "SELECT DISTINCT m.id, m.codigo_materia, m.nombre_materia
                       FROM seccion s
                       JOIN periodo p ON p.id = s.periodo_id
                       JOIN materia m ON m.id = s.materia_id
@@ -159,7 +159,7 @@ class BancoController {
                         AND s.estado = 'activa'
                         AND s.docente_id = " . (int)$uid . "
                         AND ma.estado='activa' AND ma.es_estandarizable = 1
-                      ORDER BY m.nombre";
+                      ORDER BY m.nombre_materia";
                 $rows = Materia::SQL($q);
                 self::json(200, $rows);
             }
