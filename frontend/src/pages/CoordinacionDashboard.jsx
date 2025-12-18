@@ -5,6 +5,7 @@ import Skeleton from "../components/ui/Skeleton";
 import Button from "../components/ui/Button";
 import Modal from "../components/ui/Modal";
 import Input from "../components/ui/Input";
+import { ModalImportarSemestre } from "../components/coordinacion/ModalImport";
 import {
   GraduationCap,
   Building2,
@@ -16,6 +17,9 @@ import {
   AlertCircle,
   Inbox,
   Search,
+  Upload,
+  FileSpreadsheet,
+  Trash2 
 } from "lucide-react";
 
 function unwrapResponse(data) {
@@ -26,6 +30,68 @@ function unwrapResponse(data) {
 
 function safeArray(v) {
   return Array.isArray(v) ? v : [];
+}
+
+function getPeriodoCodigo(p) {
+  const code = p?.codigo ?? p?.codigo_periodo ?? p?.code ?? p?.nombre ?? "";
+  return String(code || "").trim();
+}
+
+function getPeriodoRangoFechas(p) {
+  const ini = p?.fecha_inicio ?? p?.fechaInicio ?? null;
+  const fin = p?.fecha_fin ?? p?.fechaFin ?? null;
+  if (!ini || !fin) return "";
+  return `${ini} → ${fin}`;
+}
+
+function periodoKeyFromCodigo(code) {
+  const s = String(code || "").trim();
+  // Soporta formato común: 2025-C1 / 2026-C2 / etc.
+  const m = s.match(/^(\d{4})-([A-Za-z]+)(\d+)$/);
+  if (!m) return 0;
+  const year = Number(m[1]);
+  const letter = String(m[2] || "").toUpperCase();
+  const num = Number(m[3]);
+  const letterKey = letter === "C" ? 1 : letter.charCodeAt(0);
+  return year * 10000 + letterKey * 100 + num;
+}
+
+function comparePeriodoAsc(a, b) {
+  const ai = a?.fecha_inicio ?? a?.fechaInicio ?? null;
+  const bi = b?.fecha_inicio ?? b?.fechaInicio ?? null;
+
+  if (ai && bi) return String(ai).localeCompare(String(bi));
+
+  const ak = periodoKeyFromCodigo(getPeriodoCodigo(a));
+  const bk = periodoKeyFromCodigo(getPeriodoCodigo(b));
+  if (ak !== bk) return ak - bk;
+
+  // fallback estable
+  return getPeriodoCodigo(a).localeCompare(getPeriodoCodigo(b));
+}
+
+function windowAroundPeriodo(sorted, centerCode, radius = 5) {
+  const list = Array.isArray(sorted) ? sorted : [];
+  if (list.length <= radius * 2 + 1) return list;
+
+  const idx = list.findIndex((p) => getPeriodoCodigo(p) === centerCode);
+  if (idx === -1) return list.slice(0, radius * 2 + 1);
+
+  let start = Math.max(0, idx - radius);
+  let end = Math.min(list.length, idx + radius + 1);
+
+  const desired = radius * 2 + 1;
+  const currentLen = end - start;
+
+  if (currentLen < desired) {
+    // intenta expandir hacia donde haya espacio para mantener 11 cuando se pueda
+    const missing = desired - currentLen;
+    start = Math.max(0, start - missing);
+    end = Math.min(list.length, start + desired);
+    start = Math.max(0, end - desired);
+  }
+
+  return list.slice(start, end);
 }
 
 function StatCard({ label, value, icon: Icon }) {
@@ -55,12 +121,16 @@ export default function CoordinacionDashboard({ currentUser }) {
   const [payload, setPayload] = useState(null);
 
   const [periodCode, setPeriodCode] = useState("");
+  const [allPeriodos, setAllPeriodos] = useState([]);
+  const [periodosError, setPeriodosError] = useState("");
+
   const [activeCareerId, setActiveCareerId] = useState(null);
 
   const [search, setSearch] = useState("");
 
   const [openSectionModal, setOpenSectionModal] = useState(false);
   const [selectedSection, setSelectedSection] = useState(null);
+  const [openImportModal, setOpenImportModal] = useState(false);
 
   async function loadDashboard(code) {
     setLoading(true);
@@ -75,6 +145,11 @@ export default function CoordinacionDashboard({ currentUser }) {
       const resp = unwrapResponse(data);
 
       setPayload(resp || null);
+
+      // Mantén sincronizado el selector con el periodo cargado
+      const loadedCode = code ? String(code).trim() : getPeriodoCodigo(resp?.periodo);
+      if (loadedCode) setPeriodCode(loadedCode);
+
 
       const carreras = safeArray(resp?.carreras);
       if (carreras.length) {
@@ -98,17 +173,54 @@ export default function CoordinacionDashboard({ currentUser }) {
     }
   }
 
+
+  async function loadAllPeriodos() {
+    setPeriodosError("");
+    try {
+      const { data } = await api.get("/api/periodo");
+      const resp = unwrapResponse(data);
+      const list = safeArray(resp);
+      setAllPeriodos(list);
+    } catch (e) {
+      console.error(e);
+      setAllPeriodos([]);
+      setPeriodosError(
+        e?.response?.data?.response || "No fue posible cargar la lista de periodos."
+      );
+    }
+  }
+
   useEffect(() => {
     if (!isAllowed) {
       setLoading(false);
       return;
     }
-    loadDashboard('2025-C1');
+    loadDashboard();
+    loadAllPeriodos();
   }, [isAllowed]);
 
   const area = payload?.area ?? null;
   const periodo = payload?.periodo ?? null;
   const carreras = safeArray(payload?.carreras);
+
+  const periodOptions = useMemo(() => {
+    const base = safeArray(allPeriodos);
+
+    // Si aún no cargan los periodos, al menos muestra el que viene en el payload
+    if (base.length === 0) {
+      const code = periodCode || getPeriodoCodigo(periodo);
+      return code ? [{ ...(periodo || {}), codigo: code }] : [];
+    }
+
+    const sorted = [...base].sort(comparePeriodoAsc);
+    const center =
+      periodCode || getPeriodoCodigo(periodo) || getPeriodoCodigo(sorted[sorted.length - 1]);
+
+    return windowAroundPeriodo(sorted, center, 5);
+  }, [allPeriodos, periodCode, periodo]);
+
+  const selectedPeriodoCode = periodCode || getPeriodoCodigo(periodo) || "";
+
 
   const stats = payload?.stats ?? {
     carreras: carreras.length,
@@ -241,37 +353,51 @@ export default function CoordinacionDashboard({ currentUser }) {
             </div>
           </div>
 
-          {/* Selector simple por código de periodo */}
+          {/* Selector de periodo */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-              <span className="text-xs font-medium text-slate-600">
-                Código de periodo
-              </span>
-              <Input
-                value={periodCode}
-                onChange={(e) => setPeriodCode(e.target.value)}
-                placeholder="Ej. 2025-C1"
-                className="w-32"
-              />
+              <span className="text-xs font-medium text-slate-600">Periodo</span>
+
+              <select
+                className="w-20 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
+                value={
+                  periodOptions.some(
+                    (p) => getPeriodoCodigo(p) === selectedPeriodoCode
+                  )
+                    ? selectedPeriodoCode
+                    : ""
+                }
+                onChange={(e) => {
+                  const code = e.target.value;
+                  setPeriodCode(code);
+                  loadDashboard(code);
+                }}
+                disabled={periodOptions.length === 0}
+              >
+                {periodOptions.length === 0 ? (
+                  <option value="">Sin periodos</option>
+                ) : (
+                  periodOptions.map((p) => {
+                    const code = getPeriodoCodigo(p);
+                    // const extra = getPeriodoRangoFechas(p);
+                    return (
+                      <option key={code} value={code}>
+                        {code}
+                        {/* {extra ? ` • ${extra}` : ""} */}
+                      </option>
+                    );
+                  })
+                )}
+              </select>
             </div>
+
             <div className="flex gap-2">
               <Button
                 variant="secondary"
-                onClick={() => {
-                  setPeriodCode("");
-                  loadDashboard();
-                }}
+                onClick={() => setOpenImportModal(true)}
               >
-                Actual
-              </Button>
-              <Button
-                onClick={() => {
-                  const code = periodCode.trim();
-                  if (!code) return;
-                  loadDashboard(code);
-                }}
-              >
-                Cargar
+                <FileSpreadsheet className="h-4 w-4" />
+                Importar Excel
               </Button>
             </div>
           </div>
@@ -606,6 +732,16 @@ export default function CoordinacionDashboard({ currentUser }) {
           </div>
         )}
       </Modal>
+      <ModalImportarSemestre
+        open={openImportModal}
+        onClose={() => setOpenImportModal(false)}
+        defaultPeriodo={periodCode}
+        onSuccess={() => {
+          loadAllPeriodos();
+          const code = periodCode.trim();
+          loadDashboard(code || "");
+        }}
+      />
     </div>
   );
 }
