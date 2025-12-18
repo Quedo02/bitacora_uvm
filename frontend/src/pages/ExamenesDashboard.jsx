@@ -578,8 +578,8 @@ export default function ExamenesDashboard({ currentUser }) {
               variant="primary"
               onClick={() => setOpenCreate(true)}
               className="inline-flex items-center gap-2"
-              disabled={!selectedSeccionId}
-             disabled={isDocente && safeArray(clases).length === 0}>
+              disabled={!selectedSeccionId || (isDocente && safeArray(clases).length === 0)}
+            >
               <Plus size={16} />
               Crear examen
             </Button>
@@ -1144,7 +1144,11 @@ export default function ExamenesDashboard({ currentUser }) {
             <Button variant="outline_secondary" type="button" onClick={() => setOpenCreate(false)}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={saving} className="inline-flex items-center gap-2" disabled={isDocente && safeArray(clases).length === 0}>
+            <Button
+              type="submit"
+              className="inline-flex items-center gap-2"
+              disabled={saving || (isDocente && safeArray(clases).length === 0)}
+            >
               <Plus size={16} />
               Crear y editar
             </Button>
