@@ -1,11 +1,9 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: '/',
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 });
 
 api.interceptors.request.use((config) => {
@@ -19,10 +17,8 @@ api.interceptors.response.use(
   (err) => {
     if (err?.response?.status === 401) {
       localStorage.removeItem('token');
-
-      if (window.location.pathname !== '/login') {
-        window.location.replace('/login');
-      }
+      
+      if (window.location.pathname !== '/login') window.location.replace('/login');
     }
     return Promise.reject(err);
   }

@@ -5,6 +5,7 @@ import api from '../api/axios';
 import Skeleton from '../components/ui/Skeleton';
 import Input from '../components/ui/Input';
 import Button from '../components/ui/Button';
+import Card, { CardBody, CardFooter } from '../components/ui/Card';
 import {
   BookOpen,
   GraduationCap,
@@ -25,9 +26,9 @@ function safeArray(v) {
   return Array.isArray(v) ? v : [];
 }
 
-function Pill({ children }) {
+function Pill({ children, className = '' }) {
   return (
-    <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-700">
+    <span className={['inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-700', className].join(' ')}>
       {children}
     </span>
   );
@@ -50,18 +51,14 @@ export default function DocenteClases({ currentUser }) {
   const [error, setError] = useState('');
   const [payload, setPayload] = useState(null);
   
-  // Estado para búsqueda local y filtro de periodo
   const [search, setSearch] = useState('');
   const [periodCode, setPeriodCode] = useState('');
 
-  // Modificamos la función para aceptar un código opcional
   async function loadClases(code = null) {
     setLoading(true);
     setError('');
     
     try {
-      // Si recibimos código (ej: '2025-C1'), usamos la ruta con parámetro
-      // Si no, usamos la ruta base que trae el periodo actual/default
       const url = code 
         ? `/api/docente/clases/${encodeURIComponent(code)}`
         : '/api/docente/clases';
@@ -85,14 +82,10 @@ export default function DocenteClases({ currentUser }) {
       setLoading(false);
       return;
     }
-    // Carga inicial (sin periodo específico, trae el default)
     loadClases();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAllowed]);
 
   const clases = safeArray(payload?.clases);
-  // Extraemos info del docente o periodo actual si viene en el payload para mostrarlo
-  const currentDocenteId = payload?.docente_id; 
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -127,7 +120,7 @@ export default function DocenteClases({ currentUser }) {
 
   const handleResetPeriod = () => {
     setPeriodCode('');
-    loadClases(); // Recarga sin argumentos (default)
+    loadClases();
   };
 
   if (!isAllowed) {
@@ -146,19 +139,24 @@ export default function DocenteClases({ currentUser }) {
   }
 
   return (
-    <div className="px-1 py-2">
+    <div className="px-1 py-2 space-y-5">
       {/* Header y Filtros */}
-      <section className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           
           {/* Título */}
-          <div>
-            <h1 className="text-xl font-semibold text-slate-900 md:text-2xl">
-              Docente • Mis clases
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Selecciona una clase para capturar o revisar calificaciones.
-            </p>
+          <div className="flex items-start gap-3">
+            <div className="mt-1 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-brand-red/10 to-brand-red/20 shadow-sm">
+              <BookOpen className="h-6 w-6 text-brand-red" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">
+                Docente • Mis clases
+              </h1>
+              <p className="mt-1 text-sm text-slate-500">
+                Selecciona una clase para capturar o revisar calificaciones.
+              </p>
+            </div>
           </div>
 
           {/* Controles de Periodo */}
@@ -192,14 +190,14 @@ export default function DocenteClases({ currentUser }) {
           </div>
         </div>
 
-        {/* Buscador Local (Filtro en memoria) */}
+        {/* Buscador Local */}
         <div className="mt-4 border-t border-slate-100 pt-4">
           <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 w-full md:w-auto md:max-w-md">
             <Search className="h-4 w-4 text-slate-400" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Filtrar resultados por materia, grupo, carrera..."
+              placeholder="Filtrar por materia, grupo, carrera..."
               className="w-full border-none p-0 focus:ring-0"
             />
           </div>
@@ -207,36 +205,40 @@ export default function DocenteClases({ currentUser }) {
       </section>
 
       {/* Body: Grid de Clases */}
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
+      <section>
         {loading && (
           <div className="space-y-3">
             <Skeleton height={22} />
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-               <Skeleton height={180} />
-               <Skeleton height={180} />
-               <Skeleton height={180} />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+               <Skeleton height={200} />
+               <Skeleton height={200} />
+               <Skeleton height={200} />
             </div>
           </div>
         )}
 
         {!loading && error && (
-          <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            <AlertCircle className="mt-0.5 h-5 w-5" />
-            <div className="flex-1">{error}</div>
-            <Button size="sm" variant="secondary" onClick={() => loadClases(periodCode)}>
-              Reintentar
-            </Button>
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <AlertCircle className="mt-0.5 h-5 w-5" />
+              <div className="flex-1">{error}</div>
+              <Button size="sm" variant="secondary" onClick={() => loadClases(periodCode)}>
+                Reintentar
+              </Button>
+            </div>
           </div>
         )}
 
         {!loading && !error && filtered.length === 0 && (
-          <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-600">
-            <Filter className="mx-auto h-8 w-8 text-slate-300 mb-2" />
-            <p>No se encontraron clases.</p>
-            <p className="text-xs text-slate-400 mt-1">
-                {periodCode 
-                  ? `Verifica el periodo "${periodCode}" o intenta con otro.` 
-                  : "No tienes asignaciones activas en el periodo actual."}
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-12 text-center">
+            <Filter className="mx-auto h-10 w-10 text-slate-300 mb-3" />
+            <h3 className="text-base font-semibold text-slate-900 mb-1">
+              No se encontraron clases
+            </h3>
+            <p className="text-sm text-slate-500">
+              {periodCode 
+                ? `Verifica el periodo "${periodCode}" o intenta con otro.` 
+                : "No tienes asignaciones activas en el periodo actual."}
             </p>
           </div>
         )}
@@ -249,89 +251,89 @@ export default function DocenteClases({ currentUser }) {
               const tipoEval = evalLabel(c?.materia?.tipo_evaluacion);
 
               return (
-                <button
-                  key={`${c.seccion_id}-${c.periodo}`} // Agregué periodo al key por seguridad si hay duplicados ids en diferentes periodos
-                  type="button"
+                <Card
+                  key={`${c.seccion_id}-${c.periodo}`}
+                  hover
                   onClick={() =>
                     navigate(`/docente/clases/${c.seccion_id}`, {
                       state: { clase: c }
                     })
                   }
-                  className="
-                    group flex flex-col text-left h-full
-                    rounded-2xl border border-slate-200 bg-white
-                    p-4 shadow-sm transition-all duration-200
-                    hover:border-brand-red/40 hover:shadow-md hover:-translate-y-0.5
-                  "
+                  className="group text-left"
                 >
-                  <div className="flex items-start justify-between gap-2 w-full">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <Pill>{c?.periodo ?? '—'}</Pill>
-                        {c?.grupo && <Pill>Gpo {c.grupo}</Pill>}
-                        {tipoEval && <Pill>{tipoEval}</Pill>}
+                  <CardBody>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                          <Pill>{c?.periodo ?? '—'}</Pill>
+                          {c?.grupo && <Pill>Gpo {c.grupo}</Pill>}
+                          {tipoEval && <Pill>{tipoEval}</Pill>}
+                        </div>
+
+                        <h3 className="text-base font-bold text-slate-900 group-hover:text-brand-red leading-tight transition-colors">
+                          {c?.materia?.nombre ?? 'Materia desconocida'}
+                        </h3>
+                        <div className="mt-1 text-xs font-mono text-slate-500">
+                          {c?.materia?.codigo ?? 'SIN CODIGO'}
+                        </div>
                       </div>
 
-                      <h3 className="mt-3 text-base font-bold text-slate-900 group-hover:text-brand-red leading-tight">
-                        {c?.materia?.nombre ?? 'Materia desconocida'}
-                      </h3>
-                      <div className="mt-1 text-xs font-mono text-slate-500">
-                        {c?.materia?.codigo ?? 'SIN CODIGO'}
+                      <div className="rounded-xl bg-slate-50 p-2.5 flex-shrink-0 group-hover:bg-brand-red/5 transition-colors">
+                        <BookOpen className="h-5 w-5 text-brand-red" />
                       </div>
                     </div>
 
-                    <div className="rounded-xl bg-slate-50 p-2.5 flex-shrink-0 group-hover:bg-brand-red/5 transition-colors">
-                      <BookOpen className="h-5 w-5 text-brand-red" />
-                    </div>
-                  </div>
+                    <div className="my-4 h-px w-full bg-slate-100" />
 
-                  <div className="my-4 h-px w-full bg-slate-100" />
-
-                  <div className="space-y-2 text-xs text-slate-600 flex-1">
-                    <div className="flex items-center gap-2">
-                      <GraduationCap className="h-3.5 w-3.5 text-slate-400" />
-                      <span className="font-medium truncate" title={c?.carrera?.nombre}>
-                        {c?.carrera?.nombre ?? 'Carrera general'}
-                      </span>
+                    <div className="space-y-2 text-xs text-slate-600">
+                      <div className="flex items-center gap-2">
+                        <GraduationCap className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                        <span className="font-medium truncate" title={c?.carrera?.nombre}>
+                          {c?.carrera?.nombre ?? 'Carrera general'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CalendarDays className="h-3.5 w-3.5 text-slate-400 flex-shrink-0" />
+                        <span className="capitalize">{c?.modalidad ?? 'Presencial'}</span>
+                        {c?.seccion_estado && (
+                           <span className={`ml-auto text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
+                             c.seccion_estado === 'activa' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                           }`}>
+                             {c.seccion_estado}
+                           </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <CalendarDays className="h-3.5 w-3.5 text-slate-400" />
-                      <span className="capitalize">{c?.modalidad ?? 'Presencial'}</span>
-                      {c?.seccion_estado && (
-                         <span className={`ml-auto text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
-                           c.seccion_estado === 'activa' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                         }`}>
-                           {c.seccion_estado}
-                         </span>
-                      )}
-                    </div>
-                  </div>
 
-                  {/* Componentes de evaluación */}
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {safeArray(c?.componentes).map((cmp) => (
-                      <span 
-                        key={`${c.seccion_id}-${cmp.tipo}`} 
-                        className="inline-flex items-center rounded border border-slate-100 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-600"
-                        title={`CRN: ${cmp.crn}`}
-                      >
-                         <span className="capitalize font-medium mr-1">{cmp.tipo}:</span> 
-                         {cmp.peso}%
-                      </span>
-                    ))}
-                  </div>
+                    {/* Componentes de evaluación */}
+                    {safeArray(c?.componentes).length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {safeArray(c?.componentes).map((cmp) => (
+                          <span 
+                            key={`${c.seccion_id}-${cmp.tipo}`} 
+                            className="inline-flex items-center rounded border border-slate-100 bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-600"
+                            title={`CRN: ${cmp.crn}`}
+                          >
+                             <span className="capitalize font-medium mr-1">{cmp.tipo}:</span> 
+                             {cmp.peso}%
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </CardBody>
                   
-                  {/* Footer de la tarjeta */}
-                  <div className="mt-4 flex items-center justify-between border-t border-slate-50 pt-3">
-                     <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                        <Users className="h-3.5 w-3.5" />
-                        <span>{alumnosCount} alumnos</span>
-                     </div>
-                     <span className="text-xs font-medium text-brand-red group-hover:underline">
-                        Ver detalle →
-                     </span>
-                  </div>
-                </button>
+                  <CardFooter>
+                    <div className="flex items-center justify-between">
+                       <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                          <Users className="h-3.5 w-3.5" />
+                          <span>{alumnosCount} alumnos</span>
+                       </div>
+                       <span className="text-xs font-medium text-brand-red group-hover:underline">
+                          Ver detalle →
+                       </span>
+                    </div>
+                  </CardFooter>
+                </Card>
               );
             })}
           </div>

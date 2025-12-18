@@ -125,11 +125,11 @@ class BancoController {
             $uid = self::uid();
 
             if (self::isAdmin()) {
-                $q = "SELECT DISTINCT m.id, m.codigo, m.nombre
+                $q = "SELECT DISTINCT m.id, m.codigo_materia, m.nombre_materia
                       FROM materia m
                       JOIN materia_area ma ON ma.materia_id = m.id
                       WHERE ma.estado='activa' AND ma.es_estandarizable = 1
-                      ORDER BY m.nombre";
+                      ORDER BY m.nombre_materia";
                 $rows = Materia::SQL($q);
                 self::json(200, $rows);
             }
@@ -138,19 +138,19 @@ class BancoController {
                 $areaId = self::coordAreaId($uid);
                 if (!$areaId) self::json(404, 'Coordinador sin área asignada');
 
-                $q = "SELECT DISTINCT m.id, m.codigo, m.nombre
+                $q = "SELECT DISTINCT m.id, m.codigo_materia, m.nombre_materia
                       FROM materia m
                       JOIN materia_area ma ON ma.materia_id = m.id
                       WHERE ma.area_id = " . (int)$areaId . "
                         AND ma.estado='activa' AND ma.es_estandarizable = 1
-                      ORDER BY m.nombre";
+                      ORDER BY m.nombre_materia";
                 $rows = Materia::SQL($q);
                 self::json(200, $rows);
             }
 
             // Docente TC/General: solo materias que imparte en periodo activo
             if (self::isDocente()) {
-                $q = "SELECT DISTINCT m.id, m.codigo, m.nombre
+                $q = "SELECT DISTINCT m.id, m.codigo_materia, m.nombre_materia
                       FROM seccion s
                       JOIN periodo p ON p.id = s.periodo_id
                       JOIN materia m ON m.id = s.materia_id
@@ -159,7 +159,7 @@ class BancoController {
                         AND s.estado = 'activa'
                         AND s.docente_id = " . (int)$uid . "
                         AND ma.estado='activa' AND ma.es_estandarizable = 1
-                      ORDER BY m.nombre";
+                      ORDER BY m.nombre_materia";
                 $rows = Materia::SQL($q);
                 self::json(200, $rows);
             }

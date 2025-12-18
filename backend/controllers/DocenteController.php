@@ -151,8 +151,15 @@ class DocenteController{
             echo json_encode(['ok' => false, 'response' => 'No autorizado'], JSON_UNESCAPED_UNICODE);
             exit;
         }
-        
-        $docenteId = $_SESSION['id'];
+
+        if (in_array($_SESSION['rol_id'], [3,4])) {
+            $docenteId = $_SESSION['id'];
+        }elseif ($_SESSION['rol_id'] === 2) {
+            $dsql="SELECT docente_id FROM seccion WHERE id = {$seccion_id} LIMIT 1";
+            $res = ActiveRecord::SQL($dsql);
+            $docenteId = isset($res[0]->docente_id) ? (int)$res[0]->docente_id : 0;
+        }
+
         $seccionId = (int)($seccion_id ?? 0);
 
         if (!$seccionId) {

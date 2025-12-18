@@ -31,6 +31,21 @@ function Pill({ children }) {
   );
 }
 
+function parsePeriodoCode(code) {
+  // Soporta algo tipo 2025-C1, 2025-C2, etc.
+  const s = String(code || "").trim();
+  const m = s.match(/^(\d{4})-C(\d{1,2})$/i);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const term = Number(m[2]);
+  if (!Number.isFinite(year) || !Number.isFinite(term)) return null;
+  return year * 100 + term;
+}
+
+function getPeriodoCodigo(p) {
+  return String(p?.codigo ?? p?.codigo_periodo ?? p?.code ?? "").trim();
+}
+
 export default function CoordinacionPersonas({ currentUser }) {
   const roleId = Number(currentUser?.rol_id ?? currentUser?.role_id ?? 0);
   const isAllowed = roleId === 1 || roleId === 2;
@@ -45,7 +60,12 @@ export default function CoordinacionPersonas({ currentUser }) {
   const [payloadAl, setPayloadAl] = useState(null);
   const [payloadDoc, setPayloadDoc] = useState(null);
 
+  // ✅ ahora periodCode es el valor seleccionado del dropdown
   const [periodCode, setPeriodCode] = useState("");
+
+  // ✅ lista completa desde /api/periodo
+  const [allPeriodos, setAllPeriodos] = useState([]);
+
   const [search, setSearch] = useState("");
 
   async function loadAlumnos() {
@@ -58,8 +78,7 @@ export default function CoordinacionPersonas({ currentUser }) {
       console.error(e);
       setPayloadAl(null);
       setErrorAl(
-        e?.response?.data?.response ||
-          "No fue posible cargar alumnos del área."
+        e?.response?.data?.response || "No fue posible cargar alumnos del área."
       );
     } finally {
       setLoadingAl(false);
@@ -80,11 +99,22 @@ export default function CoordinacionPersonas({ currentUser }) {
       console.error(e);
       setPayloadDoc(null);
       setErrorDoc(
-        e?.response?.data?.response ||
-          "No fue posible cargar docentes del área."
+        e?.response?.data?.response || "No fue posible cargar docentes del área."
       );
     } finally {
       setLoadingDoc(false);
+    }
+  }
+
+  async function loadPeriodos() {
+    try {
+      // usando tu CRUD genérico: GET /api/periodo
+      const { data } = await api.get("/api/periodo");
+      const list = safeArray(unwrapResponse(data));
+      setAllPeriodos(list);
+    } catch (e) {
+      console.error("Error al cargar periodos", e);
+      setAllPeriodos([]);
     }
   }
 
@@ -95,7 +125,8 @@ export default function CoordinacionPersonas({ currentUser }) {
       return;
     }
     loadAlumnos();
-    loadDocentes('2025-C1');
+    loadDocentes(); // ✅ sin hardcode (backend decide periodo actual)
+    loadPeriodos(); // ✅ llena dropdown
   }, [isAllowed]);
 
   const areaAl = payloadAl?.area ?? null;
@@ -104,6 +135,57 @@ export default function CoordinacionPersonas({ currentUser }) {
   const areaDoc = payloadDoc?.area ?? null;
   const periodoDoc = payloadDoc?.periodo ?? null;
   const docentes = safeArray(payloadDoc?.docentes);
+
+  // ✅ setea valor inicial del dropdown en cuanto backend diga "periodo actual"
+  useEffect(() => {
+    const code = String(periodoDoc?.codigo ?? "").trim();
+    if (code && !periodCode) setPeriodCode(code);
+  }, [periodoDoc?.codigo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sortedPeriodos = useMemo(() => {
+    const list = safeArray(allPeriodos).filter((p) => getPeriodoCodigo(p));
+
+    // si existe fecha_inicio, úsala para ordenar
+    const hasFecha = list.some((p) => p?.fecha_inicio);
+    if (hasFecha) {
+      return [...list].sort((a, b) => {
+        const da = new Date(a?.fecha_inicio || "1970-01-01").getTime();
+        const db = new Date(b?.fecha_inicio || "1970-01-01").getTime();
+        return da - db;
+      });
+    }
+
+    // fallback: ordenar por código tipo 2025-C1
+    return [...list].sort((a, b) => {
+      const ka = parsePeriodoCode(getPeriodoCodigo(a)) ?? 0;
+      const kb = parsePeriodoCode(getPeriodoCodigo(b)) ?? 0;
+      return ka - kb;
+    });
+  }, [allPeriodos]);
+
+  const currentPeriodoCode = useMemo(() => {
+    const fromSelect = String(periodCode || "").trim();
+    if (fromSelect) return fromSelect;
+
+    const fromPayload = String(periodoDoc?.codigo || "").trim();
+    if (fromPayload) return fromPayload;
+
+    // fallback: último (más nuevo) si está ordenado ascendente
+    const last = sortedPeriodos[sortedPeriodos.length - 1];
+    return getPeriodoCodigo(last) || "";
+  }, [periodCode, periodoDoc?.codigo, sortedPeriodos]);
+
+  const periodosDropdown = useMemo(() => {
+    const list = sortedPeriodos;
+    if (list.length <= 11) return list;
+
+    const idx = list.findIndex((p) => getPeriodoCodigo(p) === currentPeriodoCode);
+    if (idx === -1) return list;
+
+    const min = Math.max(0, idx - 5);
+    const max = Math.min(list.length, idx + 6);
+    return list.slice(min, max);
+  }, [sortedPeriodos, currentPeriodoCode]);
 
   const alumnosFlat = useMemo(() => {
     const out = [];
@@ -128,7 +210,12 @@ export default function CoordinacionPersonas({ currentUser }) {
       const e = String(a?.correo ?? "").toLowerCase();
       const m = String(a?.matricula ?? "").toLowerCase();
       const c = String(a?.carrera_nombre ?? "").toLowerCase();
-      return n.includes(term) || e.includes(term) || m.includes(term) || c.includes(term);
+      return (
+        n.includes(term) ||
+        e.includes(term) ||
+        m.includes(term) ||
+        c.includes(term)
+      );
     });
   }, [alumnosFlat, search]);
 
@@ -140,7 +227,12 @@ export default function CoordinacionPersonas({ currentUser }) {
       const e = String(d?.correo ?? "").toLowerCase();
       const m = String(d?.matricula ?? "").toLowerCase();
       const cat = String(d?.categoria ?? "").toLowerCase();
-      return n.includes(term) || e.includes(term) || m.includes(term) || cat.includes(term);
+      return (
+        n.includes(term) ||
+        e.includes(term) ||
+        m.includes(term) ||
+        cat.includes(term)
+      );
     });
   }, [docentes, search]);
 
@@ -206,31 +298,34 @@ export default function CoordinacionPersonas({ currentUser }) {
               />
             </div>
 
-            {/* selector simple periodo para docentes */}
-            <div className="flex items-center gap-2">
-              <Input
-                value={periodCode}
-                onChange={(e) => setPeriodCode(e.target.value)}
-                placeholder="Código periodo"
-                className="w-32"
-              />
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setPeriodCode("");
-                  loadDocentes();
-                }}
-              >
-                Actual
-              </Button>
-              <Button
-                onClick={() => {
-                  const code = periodCode.trim();
-                  if (!code) return;
+            {/* ✅ Dropdown de periodo (máx ±5 del actual) */}
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <span className="text-xs font-medium text-slate-600">Periodo</span>
+              <select
+                className="w-36 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
+                value={currentPeriodoCode}
+                onChange={(e) => {
+                  const code = String(e.target.value || "").trim();
+                  setPeriodCode(code);
                   loadDocentes(code);
                 }}
               >
-                Cargar
+                {periodosDropdown.map((p) => {
+                  const code = getPeriodoCodigo(p);
+                  return (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  );
+                })}
+              </select>
+
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => loadDocentes(currentPeriodoCode || undefined)}
+              >
+                Recargar
               </Button>
             </div>
           </div>
@@ -415,7 +510,7 @@ export default function CoordinacionPersonas({ currentUser }) {
               <Button
                 size="sm"
                 variant="secondary"
-                onClick={() => loadDocentes(periodCode.trim() || undefined)}
+                onClick={() => loadDocentes(currentPeriodoCode || undefined)}
               >
                 Reintentar
               </Button>
@@ -473,7 +568,12 @@ export default function CoordinacionPersonas({ currentUser }) {
                           ) : (
                             <div className="flex flex-wrap gap-1">
                               {safeArray(d.carreras).map((c) => (
-                                <Pill key={c.id ?? `${c.codigo_carrera}-${c.nombre_carrera}`}>
+                                <Pill
+                                  key={
+                                    c.id ??
+                                    `${c.codigo_carrera}-${c.nombre_carrera}`
+                                  }
+                                >
                                   {c.codigo_carrera
                                     ? c.codigo_carrera
                                     : c.nombre_carrera ?? "Carrera"}

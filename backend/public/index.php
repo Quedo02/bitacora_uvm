@@ -10,6 +10,7 @@ use Controllers\CoordinacionController;
 use Controllers\DocenteController;
 use Controllers\BancoController;
 use Controllers\ExamenController;
+use Controllers\ImportController;
 
 $router = new Router();
 
@@ -36,13 +37,14 @@ $router->group(function(Router $router){
   // CRUD genérico
   $router->options('/api/{modelo}', function(){}, []);
   $router->options('/api/{modelo}/{id}', function(){}, []);
-
+  
   $router->post('/api/{modelo}', [ApiController::class, 'create']);
   $router->get('/api/{modelo}', [ApiController::class, 'get']);
   $router->put('/api/{modelo}/{id}', [ApiController::class, 'update']);
   $router->delete('/api/{modelo}/{id}', [ApiController::class, 'delete']);
-
+  
   // Coordinación
+  $router->options('/api/coordinacion/import/semestre', function(){}, []);
   $router->get('/api/coordinacion/dashboard', [CoordinacionController::class, 'getDashboard']);
   $router->get('/api/coordinacion/dashboard/{codigo_periodo}', [CoordinacionController::class, 'getDashboard']);
 
@@ -51,12 +53,16 @@ $router->group(function(Router $router){
   $router->get('/api/coordinacion/docentes-area', [CoordinacionController::class, 'getDocentesArea']);
   $router->get('/api/coordinacion/docentes-area/{codigo_periodo}', [CoordinacionController::class, 'getDocentesArea']);
 
+  $router->post('/api/coordinacion/import/semestre', [ImportController::class, 'importSemestre']);
+  $router->get('/api/coordinacion/import/template', [ImportController::class, 'downloadTemplateExcel']);
+
+
   // Docente
   $router->get('/api/docente/clases', [DocenteController::class, 'getClases']);
   $router->get('/api/docente/clases/{codigo_periodo}', [DocenteController::class, 'getClases']);
   $router->get('/api/docente/clase/{seccion_id}', [DocenteController::class, 'getClaseDetalle']);
 
-  // ===== BANCO (QBANK) =====
+  // ===== BANCO =====
   $router->options('/api/banco/{recurso}', function(){}, []);
   $router->options('/api/banco/{recurso}/{id}', function(){}, []);
   $router->options('/api/banco/{recurso}/{id}/{sub}', function(){}, []);

@@ -14,8 +14,9 @@ export default function Modal({
   keyboard = true,
   footer = null,
   children,
+  duration = 200,       // ms (animación)
 }) {
-  // Cerrar con ESC
+  // Cerrar con ESC (solo cuando está abierto)
   useEffect(() => {
     if (!open || !keyboard) return;
 
@@ -29,7 +30,7 @@ export default function Modal({
     return () => window.removeEventListener('keydown', handleKey);
   }, [open, keyboard, staticBackdrop, onClose]);
 
-  if (typeof document === 'undefined' || !open) return null;
+  if (typeof document === 'undefined') return null;
 
   const sizeClass = {
     sm: 'max-w-sm',
@@ -40,22 +41,40 @@ export default function Modal({
 
   const alignment = centered ? 'items-center' : 'items-start pt-16';
 
+  // Nota: dejamos el modal SIEMPRE montado para permitir fade-out sin setState en useEffect.
+  // Cuando open=false, deshabilitamos interacción con pointer-events-none.
   const content = (
     <div
-      className="fixed inset-0 z-40 flex justify-center bg-black/50"
+      className={[
+        'fixed inset-0 z-40 flex justify-center',
+        alignment,
+        // fondo oscuro + blur detrás del modal
+        'bg-black/50 backdrop-blur-sm',
+        // animación del backdrop
+        'transition-opacity',
+        open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
+      ].join(' ')}
+      style={{ transitionDuration: `${duration}ms` }}
       onClick={() => {
-        if (!staticBackdrop) onClose();
+        if (!staticBackdrop && open) onClose();
       }}
+      aria-hidden={!open}
     >
-      <div className={['w-full px-4', alignment].join(' ')}>
+      <div className="w-full px-4">
         <div
+          role="dialog"
+          aria-modal="true"
           className={[
             'mx-auto rounded-2xl bg-white shadow-xl',
             sizeClass,
             scrollable ? 'max-h-[80vh] flex flex-col' : '',
+            // animación del panel
+            'transition-all ease-out',
+            open ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-2 scale-[0.98]',
           ]
             .filter(Boolean)
             .join(' ')}
+          style={{ transitionDuration: `${duration}ms` }}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
