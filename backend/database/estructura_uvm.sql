@@ -940,13 +940,3 @@ INSERT INTO parcial (id, nombre, orden) VALUES
 (1, 'Parcial 1', 1),
 (2, 'Parcial 2', 2),
 (3, 'Parcial 3', 3);
-
-INSERT INTO seccion_parcial_config (seccion_id, parcial_id, peso_semestre)
-SELECT s.id, p.id,
-       CASE p.id
-           WHEN 1 THEN 16.67
-           WHEN 2 THEN 16.67
-           WHEN 3 THEN 16.66
-       END
-FROM seccion s
-CROSS JOIN parcial p;
