@@ -1,24 +1,21 @@
-import axios from 'axios';
+import axios from "axios";
+
+const LOGIN_PATH = "/app/login";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: "",
   withCredentials: true,
-  headers: { 'Content-Type': 'application/json' },
-});
-
-api.interceptors.request.use((config) => {
-  const old = localStorage.getItem('token');
-  if (old) localStorage.removeItem('token');
-  return config;
+  headers: { "Content-Type": "application/json" },
 });
 
 api.interceptors.response.use(
   (r) => r,
   (err) => {
     if (err?.response?.status === 401) {
-      localStorage.removeItem('token');
-      
-      if (window.location.pathname !== '/login') window.location.replace('/login');
+      localStorage.removeItem("token");
+      if (window.location.pathname !== LOGIN_PATH) {
+        window.location.replace(LOGIN_PATH);
+      }
     }
     return Promise.reject(err);
   }

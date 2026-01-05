@@ -500,14 +500,14 @@ class BancoController {
 
             // filtro por alcance (coordinador/docente)
             $rol = self::rol();
-            if ($rol === 2) {
+            if ($rol === 2 || $rol === 3) {
                 $areaId = self::coordAreaId(self::uid());
                 if ($areaId) {
                     $ok = PreguntaVersionArea::SQL("SELECT 1 FROM pregunta_version_area WHERE pregunta_version_id = " . (int)$p->version_actual_id . " AND area_id = " . (int)$areaId . " LIMIT 1");
                     if (empty($ok)) self::json(403, 'No autorizado');
                 }
             }
-            if (in_array($rol, [3,4], true)) {
+            if (in_array($rol, [4], true)) {
                 if (!self::docenteImparteMateriaEnPeriodoActivo(self::uid(), (int)$p->materia_id) && !self::isAdmin()) {
                     self::json(403, 'No autorizado');
                 }

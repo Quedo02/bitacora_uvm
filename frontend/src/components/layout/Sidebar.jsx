@@ -20,6 +20,7 @@ const roleName = {
 const coordinacion = (roleId) => roleId === 2;
 const docente = (roleId) => roleId === 2 || roleId === 3 || roleId === 4;
 const qbank = (roleId) => roleId === 1 || roleId === 2 || roleId === 3 || roleId === 4;
+const alumno = (roleId) => roleId === 5;
 
 
 
@@ -39,7 +40,7 @@ export default function Sidebar({ user, onLogout }) {
       <div className="mb-6 flex justify-center">
         <div className="flex flex-col items-center gap-2 text-center">
           <img
-            src="/uvm-logo-blanco.png"
+            src="/app/uvm-logo-blanco.png"
             alt="UVM"
             className="h-16 w-auto object-contain drop-shadow"
           />
@@ -99,8 +100,18 @@ export default function Sidebar({ user, onLogout }) {
                 </NavItem>
               </li>
               <li>
-                <NavItem to="/examenes" icon={ClipboardList}>
+                <NavItem to="/docente/examenes" icon={ClipboardList}>
                   Exámenes
+                </NavItem>
+              </li>
+            </>
+          )}
+
+          {alumno(roleId) && (
+            <>
+              <li>
+                <NavItem to="/alumno/examenes" icon={BookOpen}>
+                  Mis examenes
                 </NavItem>
               </li>
             </>

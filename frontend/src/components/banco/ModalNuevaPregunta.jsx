@@ -1019,7 +1019,7 @@ export default function ModalNuevaPregunta({ open, onClose, materiaId, materiaNo
         {/* Temas */}
         {temas.length > 0 && (
           <div className="rounded-lg border border-slate-200 p-3">
-            <div className="text-xs font-semibold text-slate-700">Tema(s) de la pregunta (opcional)</div>
+            <div className="text-xs font-semibold text-slate-700">Tema(s) relacionados de la pregunta (opcional)</div>
             <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
               {temas.map((tema) => (
                 <label key={tema.id} className="flex items-start gap-2 text-sm text-slate-700">

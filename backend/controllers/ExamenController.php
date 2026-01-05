@@ -1,4 +1,5 @@
 <?php
+
 namespace Controllers;
 
 use MVC\Router;
@@ -15,9 +16,11 @@ use Model\Pregunta;
 use Model\MateriaArea;
 use Model\CoordinadorProfile;
 
-class ExamenController {
+class ExamenController
+{
 
-    private static function json(int $code, $payload = null): void {
+    private static function json(int $code, $payload = null): void
+    {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code($code);
         if ($payload === null) {
@@ -28,38 +31,61 @@ class ExamenController {
         exit;
     }
 
-    private static function requireMethod(string $method): void {
+    private static function requireMethod(string $method): void
+    {
         if (($_SERVER['REQUEST_METHOD'] ?? '') !== $method) {
             http_response_code(405);
             exit;
         }
     }
 
-    private static function body(): array {
+    private static function body(): array
+    {
         $raw = file_get_contents('php://input');
         $data = json_decode($raw ?: '[]', true);
         return is_array($data) ? $data : [];
     }
 
-    private static function rol(): int { return (int)($_SESSION['rol_id'] ?? 0); }
-    private static function uid(): int { return (int)($_SESSION['id'] ?? 0); }
-    private static function isAdmin(): bool { return self::rol() === 1; }
-    private static function isCoord(): bool { return self::rol() === 2; }
-    private static function isDocente(): bool { return in_array(self::rol(), [3,4], true); }
-    private static function isAlumno(): bool { return self::rol() === 5; }
+    private static function rol(): int
+    {
+        return (int)($_SESSION['rol_id'] ?? 0);
+    }
+    private static function uid(): int
+    {
+        return (int)($_SESSION['id'] ?? 0);
+    }
+    private static function isAdmin(): bool
+    {
+        return self::rol() === 1;
+    }
+    private static function isCoord(): bool
+    {
+        return self::rol() === 2;
+    }
+    private static function isDocente(): bool
+    {
+        return in_array(self::rol(), [3, 4], true);
+    }
+    private static function isAlumno(): bool
+    {
+        return self::rol() === 5;
+    }
 
-    private static function coordAreaId(int $userId): ?int {
+    private static function coordAreaId(int $userId): ?int
+    {
         $cp = CoordinadorProfile::where('usuario_id', $userId);
         return $cp ? (int)$cp->area_id : null;
     }
 
-    private static function docenteEsDeSeccion(int $docenteId, int $seccionId): bool {
+    private static function docenteEsDeSeccion(int $docenteId, int $seccionId): bool
+    {
         $s = Seccion::find($seccionId);
         if (!$s) return false;
         return (int)$s->docente_id === (int)$docenteId;
     }
 
-    private static function alumnoInscritoEnSeccion(int $alumnoId, int $seccionId): ?int {
+    private static function alumnoInscritoEnSeccion(int $alumnoId, int $seccionId): ?int
+    {
         $rows = Inscripcion::SQL("SELECT id FROM inscripcion WHERE seccion_id = " . (int)$seccionId . " AND estudiante_id = " . (int)$alumnoId . " AND estado='inscrito' LIMIT 1");
         if (empty($rows)) return null;
         return (int)$rows[0]->id;
@@ -68,7 +94,8 @@ class ExamenController {
     // =========================
     //  GET /api/examenes/seccion/{seccion_id}
     // =========================
-    public static function getExamenesSeccion(Router $router, $seccion_id): void {
+    public static function getExamenesSeccion(Router $router, $seccion_id): void
+    {
         try {
             self::requireMethod('GET');
 
@@ -76,7 +103,7 @@ class ExamenController {
             if ($sid <= 0) self::json(400, 'seccion_id inválido');
 
             $rol = self::rol();
-            if (!in_array($rol, [1,2,3,4], true)) self::json(403, 'No autorizado');
+            if (!in_array($rol, [1, 2, 3, 4], true)) self::json(403, 'No autorizado');
 
             if (self::isDocente() && !self::isAdmin()) {
                 if (!self::docenteEsDeSeccion(self::uid(), $sid)) self::json(403, 'No autorizado');
@@ -92,7 +119,8 @@ class ExamenController {
     // =========================
     //  POST /api/examenes/seccion/{seccion_id}
     // =========================
-    public static function createExamen(Router $router, $seccion_id): void {
+    public static function createExamen(Router $router, $seccion_id): void
+    {
         try {
             self::requireMethod('POST');
 
@@ -161,7 +189,8 @@ class ExamenController {
     // =========================
     //  GET /api/examenes/examen/{examen_id}
     // =========================
-    public static function getExamenDetalle(Router $router, $examen_id): void {
+    public static function getExamenDetalle(Router $router, $examen_id): void
+    {
         try {
             self::requireMethod('GET');
 
@@ -190,8 +219,17 @@ class ExamenController {
                 self::json(403, 'No autorizado');
             }
 
-            $pregs = ExamenPregunta::SQL("SELECT * FROM examen_pregunta WHERE examen_id = {$eid} ORDER BY orden_base ASC");
-
+            $pregs = ExamenPregunta::SQL("
+                SELECT ep.*,
+                        COALESCE(pv.enunciado, 'Enunciado no encontrado') AS enunciado,
+                        pv.contenido_json as opciones,
+                        pv.respuesta_json as respuesta
+                FROM examen_pregunta ep
+                LEFT JOIN pregunta_version pv
+                    ON pv.id = ep.pregunta_version_id
+                WHERE ep.examen_id = {$eid}
+                ORDER BY ep.orden_base ASC
+                ");
             self::json(200, [
                 'examen' => $ex,
                 'preguntas' => $pregs
@@ -204,7 +242,8 @@ class ExamenController {
     // =========================
     //  PUT /api/examenes/examen/{examen_id}
     // =========================
-    public static function updateExamen(Router $router, $examen_id): void {
+    public static function updateExamen(Router $router, $examen_id): void
+    {
         try {
             self::requireMethod('PUT');
 
@@ -222,11 +261,22 @@ class ExamenController {
             $data = self::body();
             $ex = new Examen((array)$exDB);
 
-            foreach ([
-                'tipo','parcial_id','fecha_inicio','duracion_min','intentos_max',
-                'modo_armado','num_preguntas','dificultad_min','dificultad_max',
-                'mezclar_preguntas','mezclar_opciones','estado'
-            ] as $k) {
+            foreach (
+                [
+                    'tipo',
+                    'parcial_id',
+                    'fecha_inicio',
+                    'duracion_min',
+                    'intentos_max',
+                    'modo_armado',
+                    'num_preguntas',
+                    'dificultad_min',
+                    'dificultad_max',
+                    'mezclar_preguntas',
+                    'mezclar_opciones',
+                    'estado'
+                ] as $k
+            ) {
                 if (array_key_exists($k, $data)) $ex->$k = $data[$k];
             }
 
@@ -240,7 +290,8 @@ class ExamenController {
     // =========================
     //  DELETE /api/examenes/examen/{examen_id}
     // =========================
-    public static function deleteExamen(Router $router, $examen_id): void {
+    public static function deleteExamen(Router $router, $examen_id): void
+    {
         try {
             self::requireMethod('DELETE');
 
@@ -269,7 +320,8 @@ class ExamenController {
     // =========================
     //  POST /api/examenes/examen/{examen_id}/armar
     // =========================
-    public static function armarExamen(Router $router, $examen_id): void {
+    public static function armarExamen(Router $router, $examen_id): void
+    {
         try {
             self::requireMethod('POST');
 
@@ -335,7 +387,8 @@ class ExamenController {
     // =========================
     //  POST /api/examenes/examen/{examen_id}/publicar
     // =========================
-    public static function publicarExamen(Router $router, $examen_id): void {
+    public static function publicarExamen(Router $router, $examen_id): void
+    {
         try {
             self::requireMethod('POST');
 
@@ -362,7 +415,8 @@ class ExamenController {
     // =========================
     //  POST /api/examenes/examen/{examen_id}/cerrar
     // =========================
-    public static function cerrarExamen(Router $router, $examen_id): void {
+    public static function cerrarExamen(Router $router, $examen_id): void
+    {
         try {
             self::requireMethod('POST');
 
@@ -389,7 +443,8 @@ class ExamenController {
     // =========================
     //  GET /api/examenes/mis-examenes
     // =========================
-    public static function getMisExamenes(Router $router): void {
+    public static function getMisExamenes(Router $router): void
+    {
         try {
             self::requireMethod('GET');
 
@@ -421,7 +476,8 @@ class ExamenController {
     // =========================
     //  POST /api/examenes/examen/{examen_id}/iniciar
     // =========================
-    public static function iniciarIntento(Router $router, $examen_id): void {
+    public static function iniciarIntento(Router $router, $examen_id): void
+    {
         try {
             self::requireMethod('POST');
 
@@ -433,7 +489,7 @@ class ExamenController {
             $ex = Examen::find($eid);
             if (!$ex) self::json(404, 'Examen no encontrado');
 
-            if (!in_array((string)$ex->estado, ['programado','activo'], true)) self::json(400, 'Examen no disponible');
+            if (!in_array((string)$ex->estado, ['programado', 'activo'], true)) self::json(400, 'Examen no disponible');
 
             $inscId = self::alumnoInscritoEnSeccion(self::uid(), (int)$ex->seccion_id);
             if (!$inscId) self::json(403, 'No estás inscrito en esa sección');
@@ -529,7 +585,6 @@ class ExamenController {
                 'intento_num' => $nextNum,
                 'preguntas' => $payloadPreguntas
             ]);
-
         } catch (\Throwable $e) {
             self::json(500, 'Error interno');
         }
@@ -538,7 +593,8 @@ class ExamenController {
     // =========================
     //  POST /api/examenes/intento/{intento_id}/responder
     // =========================
-    public static function guardarRespuesta(Router $router, $intento_id): void {
+    public static function guardarRespuesta(Router $router, $intento_id): void
+    {
         try {
             self::requireMethod('POST');
 
@@ -591,7 +647,8 @@ class ExamenController {
     // =========================
     //  POST /api/examenes/intento/{intento_id}/finalizar
     // =========================
-    public static function finalizarIntento(Router $router, $intento_id): void {
+    public static function finalizarIntento(Router $router, $intento_id): void
+    {
         try {
             self::requireMethod('POST');
 
@@ -683,7 +740,8 @@ class ExamenController {
     // =========================
     //  GET /api/examenes/intento/{intento_id}
     // =========================
-    public static function getIntento(Router $router, $intento_id): void {
+    public static function getIntento(Router $router, $intento_id): void
+    {
         try {
             self::requireMethod('GET');
 
@@ -712,7 +770,8 @@ class ExamenController {
     // =========================
     //  GET /api/examenes/examen/{examen_id}/intentos
     // =========================
-    public static function getIntentosExamen(Router $router, $examen_id): void {
+    public static function getIntentosExamen(Router $router, $examen_id): void
+    {
         try {
             self::requireMethod('GET');
 
@@ -738,7 +797,8 @@ class ExamenController {
     // =========================
     //  GET /api/examenes/intento/{intento_id}/detalle
     // =========================
-    public static function getIntentoDetalle(Router $router, $intento_id): void {
+    public static function getIntentoDetalle(Router $router, $intento_id): void
+    {
         try {
             self::requireMethod('GET');
 
@@ -773,7 +833,8 @@ class ExamenController {
     // =========================
     //  POST /api/examenes/intento/{intento_id}/calificar
     // =========================
-    public static function calificarIntento(Router $router, $intento_id): void {
+    public static function calificarIntento(Router $router, $intento_id): void
+    {
         try {
             self::requireMethod('POST');
 
@@ -837,7 +898,8 @@ class ExamenController {
     // =========================
     //  POST /api/examenes/intento/{intento_id}/aplicar-bitacora
     // =========================
-    public static function aplicarCalificacionBitacora(Router $router, $intento_id): void {
+    public static function aplicarCalificacionBitacora(Router $router, $intento_id): void
+    {
         try {
             self::requireMethod('POST');
 
@@ -892,13 +954,15 @@ class ExamenController {
     // =========================
     //  Auto-calificador (0..1)
     // =========================
-    private static function autoCalificar(string $tipo, $respJson, ?string $respTexto, array $corr): float {
+    private static function autoCalificar(string $tipo, $respJson, ?string $respTexto, array $corr): float
+    {
         try {
             if ($tipo === 'opcion_multiple') {
                 $sel = $respJson['seleccion'] ?? null;
                 $ok = $corr['correcta'] ?? null;
                 if (!is_array($sel) || !is_array($ok)) return 0.0;
-                sort($sel); sort($ok);
+                sort($sel);
+                sort($ok);
                 return ($sel === $ok) ? 1.0 : 0.0;
             }
 
@@ -932,7 +996,8 @@ class ExamenController {
                 $ok = $corr['valor'] ?? null;
                 $tol = (float)($corr['tolerancia'] ?? 0.0);
                 if ($v === null || $ok === null) return 0.0;
-                $v = (float)$v; $ok = (float)$ok;
+                $v = (float)$v;
+                $ok = (float)$ok;
                 return (abs($v - $ok) <= $tol) ? 1.0 : 0.0;
             }
 
@@ -949,7 +1014,7 @@ class ExamenController {
                 if (!is_array($ans) || !is_array($ok)) return 0.0;
 
                 // normalizamos a strings ordenados
-                $norm = function($arr) {
+                $norm = function ($arr) {
                     $out = [];
                     foreach ($arr as $p) {
                         $out[] = (string)($p['izq'] ?? '') . '=>' . (string)($p['der'] ?? '');
@@ -984,6 +1049,129 @@ class ExamenController {
             return 0.0;
         } catch (\Throwable $e) {
             return 0.0;
+        }
+    }
+
+    // =========================
+    //  PUT /api/examenes/examen/{examen_id}/pregunta/{pregunta_version_id}
+    //  Body: { puntos: number }
+    // =========================
+    public static function updatePuntosPregunta(Router $router, $examen_id, $pregunta_version_id): void
+    {
+        try {
+            self::requireMethod('PUT');
+
+            $eid = (int)$examen_id;
+            $pvId = (int)$pregunta_version_id;
+
+            if ($eid <= 0) self::json(400, 'examen_id inválido');
+            if ($pvId <= 0) self::json(400, 'pregunta_version_id inválido');
+
+            $exDB = Examen::find($eid);
+            if (!$exDB) self::json(404, 'Examen no encontrado');
+
+            // permisos: solo admin/docente dueño de la sección
+            if (!(self::isAdmin() || self::isDocente())) self::json(403, 'No autorizado');
+            if (self::isDocente() && !self::isAdmin()) {
+                if (!self::docenteEsDeSeccion(self::uid(), (int)$exDB->seccion_id)) self::json(403, 'No autorizado');
+            }
+
+            // Solo en borrador (para no alterar intentos ya creados)
+            if ((string)$exDB->estado !== 'borrador') {
+                self::json(409, 'Solo puedes cambiar puntos cuando el examen está en borrador');
+            }
+
+            $data = self::body();
+            if (!array_key_exists('puntos', $data)) self::json(400, 'puntos requerido');
+
+            $puntos = (float)$data['puntos'];
+            if (!is_finite($puntos)) self::json(400, 'puntos inválido');
+
+            // límites acorde a DECIMAL(6,2): 0.01 .. 9999.99
+            $puntos = round($puntos, 2);
+            if ($puntos <= 0) self::json(400, 'puntos debe ser mayor a 0');
+            if ($puntos > 9999.99) $puntos = 9999.99;
+
+            // verificar que esa pregunta exista en el examen
+            $exists = ExamenPregunta::SQL("
+            SELECT 1
+            FROM examen_pregunta
+            WHERE examen_id = {$eid} AND pregunta_version_id = {$pvId}
+            LIMIT 1
+        ");
+            if (empty($exists)) self::json(404, 'La pregunta no está en este examen');
+
+            // update
+            ExamenPregunta::SQL("
+            UPDATE examen_pregunta
+            SET puntos = {$puntos}
+            WHERE examen_id = {$eid} AND pregunta_version_id = {$pvId}
+            LIMIT 1
+        ");
+
+            // devolver row actualizada (útil para UI)
+            $row = ExamenPregunta::SQL("
+            SELECT ep.*,
+                   COALESCE(pv.enunciado, 'Enunciado no encontrado') AS enunciado
+            FROM examen_pregunta ep
+            LEFT JOIN pregunta_version pv ON pv.id = ep.pregunta_version_id
+            WHERE ep.examen_id = {$eid} AND ep.pregunta_version_id = {$pvId}
+            LIMIT 1
+        ");
+
+            self::json(200, $row ? $row[0] : 'Actualizado');
+        } catch (\Throwable $e) {
+            self::json(500, 'Error interno');
+        }
+    }
+
+    public static function deletePreguntaExamen(Router $router, $examen_id, $pregunta_version_id): void{
+        try {
+            self::requireMethod('DELETE');
+
+            $eid = (int)$examen_id;
+            $pvId = (int)$pregunta_version_id;
+
+            if ($eid <= 0) self::json(400, 'examen_id inválido');
+            if ($pvId <= 0) self::json(400, 'pregunta_version_id inválido');
+
+            $exDB = Examen::find($eid);
+            if (!$exDB) self::json(404, 'Examen no encontrado');
+
+            if (!(self::isAdmin() || self::isDocente())) self::json(403, 'No autorizado');
+            if (self::isDocente() && !self::isAdmin()) {
+                if (!self::docenteEsDeSeccion(self::uid(), (int)$exDB->seccion_id)) self::json(403, 'No autorizado');
+            }
+
+            if ((string)$exDB->estado !== 'borrador') {
+                self::json(409, 'Solo puedes eliminar preguntas cuando el examen está en borrador');
+            }
+
+            $exists = ExamenPregunta::SQL("
+            SELECT 1
+            FROM examen_pregunta
+            WHERE examen_id = {$eid} AND pregunta_version_id = {$pvId}
+            LIMIT 1
+        ");
+            if (empty($exists)) self::json(404, 'La pregunta no está en este examen');
+
+            ExamenPregunta::SQL("
+            DELETE FROM examen_pregunta
+            WHERE examen_id = {$eid} AND pregunta_version_id = {$pvId}
+            LIMIT 1
+        ");
+            $row = ExamenPregunta::SQL("
+            SELECT ep.*,
+                   COALESCE(pv.enunciado, 'Enunciado no encontrado') AS enunciado
+            FROM examen_pregunta ep
+            LEFT JOIN pregunta_version pv ON pv.id = ep.pregunta_version_id
+            WHERE ep.examen_id = {$eid} AND ep.pregunta_version_id = {$pvId}
+            LIMIT 1
+        ");
+
+            self::json(200, $row ? $row[0] : 'Actualizado');
+        } catch (\Throwable $e) {
+            self::json(500, 'Error interno');
         }
     }
 }
