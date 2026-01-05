@@ -39,7 +39,7 @@ export default function Sidebar({ user, onLogout }) {
       <div className="mb-6 flex justify-center">
         <div className="flex flex-col items-center gap-2 text-center">
           <img
-            src="/uvm-logo-blanco.png"
+            src="/app/uvm-logo-blanco.png"
             alt="UVM"
             className="h-16 w-auto object-contain drop-shadow"
           />

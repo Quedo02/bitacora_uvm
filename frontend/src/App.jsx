@@ -34,9 +34,9 @@ export default function App() {
   const onLogout = async () => {
     // Intento POST y fallback a GET por si tu router usa otro método
     try {
-      await api.post('/api/logout');
+      await api.post('/api/auth/logout');
     } catch {
-        await api.get('/api/logout');
+        await api.get('/api/auth/logout');
     }
 
     localStorage.removeItem('token'); // limpieza por si quedó
@@ -60,7 +60,7 @@ export default function App() {
   }, []);
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/app">
       <Routes>
         <Route path="/login" element={<Login onLogin={onLogin} />} />
 

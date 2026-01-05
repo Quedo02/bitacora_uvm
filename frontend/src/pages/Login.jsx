@@ -18,7 +18,7 @@ export default function Login({ onLogin }) {
 
   useEffect(() => {
     api
-      .get('/config')
+      .get('/api/config')
       .then((r) => setMsEnabled(!!r.data.microsoftEnabled))
       .catch(() => {});
   }, []);
@@ -55,7 +55,7 @@ export default function Login({ onLogin }) {
         {/* Logo + título */}
         <div className="mb-4 text-center">
           <img
-            src="/uvm-logo.svg"
+            src="/app/uvm-logo.svg"
             alt="Logo de la Universidad del Valle de México"
             className="mx-auto mb-2 h-20 w-auto object-contain"
           />
