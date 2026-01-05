@@ -10,7 +10,12 @@ import CoordinacionPersonas from './pages/CoordinacionPersonas.jsx';
 import DocenteClases from './pages/DocenteClases.jsx';
 import DocenteClaseDetalle from './pages/DocenteClaseDetalle.jsx';
 import BancoPreguntas from './pages/BancoPreguntas.jsx';
-import ExamenesDashboard from './pages/ExamenesDashboard.jsx';
+import ExamenesListado from "./pages/ExamenesListado";
+import ExamenEditor from "./pages/ExamenEditor";
+import ExamenAlumno from "./pages/ExamenAlumno";
+import ExamenResultados from "./pages/ExamenResultados";
+import MisExamenesAlumno from './pages/MisExamenesAlumno.jsx';
+// import IntentoDetalle from "./pages/IntentoDetalle";
 
 function unwrapUser(data) {
   if (!data) return null;
@@ -98,17 +103,37 @@ export default function App() {
             element={<BancoPreguntas currentUser={user} />}
           />
           <Route
-            path="examenes"
-            element={<ExamenesDashboard currentUser={user} />}
+            path="/docente/examenes"
+            element={<ExamenesListado currentUser={user} />}
           />
           <Route
-            path="docente/examenes"
-            element={<ExamenesDashboard currentUser={user} />}
+            path="/docente/examenes/:seccionId"
+            element={<ExamenesListado currentUser={user} />}
           />
           <Route
-            path="docente/examenes/:seccionId"
-            element={<ExamenesDashboard currentUser={user} />}
+            path="/docente/examenes/:seccionId/editor/:examenId"
+            element={<ExamenEditor currentUser={user} />}
           />
+          <Route
+            path="/docente/examenes/:seccionId/resultados/:examenId"
+            element={<ExamenResultados currentUser={user} />}
+          />
+          {/* <Route
+            path="/docente/examenes/:seccionId/intento/:intentoId"
+            element={<IntentoDetalle currentUser={user} />}
+          /> */}
+          <Route
+            path="/alumno/examenes"
+            element={<MisExamenesAlumno currentUser={user} />}
+          />
+          <Route
+            path="/alumno/examen/:examenId"
+            element={<ExamenAlumno currentUser={user} />}
+          />
+          {/* <Route
+            path="/alumno/examen/:examenId/resultado/:intentoId"
+            element={<ResultadoAlumno currentUser={user} />}
+          /> */}
         </Route>
       </Routes>
     </BrowserRouter>
