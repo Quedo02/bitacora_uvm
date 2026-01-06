@@ -797,8 +797,7 @@ class ExamenController
     // =========================
     //  GET /api/examenes/intento/{intento_id}/detalle
     // =========================
-    public static function getIntentoDetalle(Router $router, $intento_id): void
-    {
+    public static function getIntentoDetalle(Router $router, $intento_id): void{
         try {
             self::requireMethod('GET');
 
@@ -811,24 +810,50 @@ class ExamenController
             $ex = Examen::find((int)$intento->examen_id);
             if (!$ex) self::json(404, 'Examen no encontrado');
 
-            if (!(self::isAdmin() || self::isDocente() || self::isCoord())) self::json(403, 'No autorizado');
-            if (self::isDocente() && !self::isAdmin()) {
-                if (!self::docenteEsDeSeccion(self::uid(), (int)$ex->seccion_id)) self::json(403, 'No autorizado');
-            }
+            $preguntas = ExamenIntentoPregunta::SQL("
+                SELECT
+                    eip.examen_intento_id,
+                    eip.pregunta_version_id,
+                    eip.orden,
+                    eip.opciones_orden_json,
 
-            $pregs = ExamenIntentoPregunta::SQL("SELECT * FROM examen_intento_pregunta WHERE examen_intento_id = {$iid} ORDER BY orden ASC");
-            $resps = ExamenRespuesta::SQL("SELECT * FROM examen_respuesta WHERE examen_intento_id = {$iid}");
+                    pv.enunciado,
+                    pv.tipo,
+                    pv.contenido_json AS contenido,
+
+                    COALESCE(ep.puntos, 1.00) AS puntos_max,
+                    COALESCE(er.puntaje_manual, er.puntaje_auto, 0.00) AS puntos_obtenidos,
+
+                    er.respuesta_json AS respuesta_alumno,
+                    er.estado_revision,
+                    er.feedback
+
+                FROM examen_intento_pregunta eip
+                JOIN pregunta_version pv
+                ON pv.id = eip.pregunta_version_id
+
+                LEFT JOIN examen_respuesta er
+                ON er.examen_intento_id = eip.examen_intento_id
+                AND er.pregunta_version_id = eip.pregunta_version_id
+
+                LEFT JOIN examen_pregunta ep
+                ON ep.examen_id = {$ex->id}
+                AND ep.pregunta_version_id = eip.pregunta_version_id
+
+                WHERE eip.examen_intento_id = {$iid}
+                ORDER BY eip.orden ASC
+            ");
 
             self::json(200, [
                 'intento' => $intento,
                 'examen' => $ex,
-                'preguntas' => $pregs,
-                'respuestas' => $resps
+                'preguntas' => $preguntas,
             ]);
         } catch (\Throwable $e) {
-            self::json(500, 'Error interno');
+            self::json(500, 'Error interno: ' . $e->getMessage());
         }
     }
+
 
     // =========================
     //  POST /api/examenes/intento/{intento_id}/calificar
@@ -1125,7 +1150,8 @@ class ExamenController
         }
     }
 
-    public static function deletePreguntaExamen(Router $router, $examen_id, $pregunta_version_id): void{
+    public static function deletePreguntaExamen(Router $router, $examen_id, $pregunta_version_id): void
+    {
         try {
             self::requireMethod('DELETE');
 
@@ -1170,6 +1196,33 @@ class ExamenController
         ");
 
             self::json(200, $row ? $row[0] : 'Actualizado');
+        } catch (\Throwable $e) {
+            self::json(500, 'Error interno');
+        }
+    }
+
+    // GET /api/examenes/mis-intentos/{examen_id}
+    public static function getMisIntentos(Router $router, $examen_id): void
+    {
+        try {
+            self::requireMethod('GET');
+
+            if (!self::isAlumno()) self::json(403, 'No autorizado');
+
+            $eid = (int)$examen_id;
+            if ($eid <= 0) self::json(400, 'examen_id inválido');
+
+            $uid = self::uid();
+
+            $q = "SELECT ei.* 
+              FROM examen_intento ei
+              JOIN inscripcion i ON i.id = ei.inscripcion_id
+              WHERE ei.examen_id = {$eid}
+                AND i.estudiante_id = {$uid}
+              ORDER BY ei.intento_num ASC";
+
+            $rows = ExamenIntento::SQL($q);
+            self::json(200, $rows);
         } catch (\Throwable $e) {
             self::json(500, 'Error interno');
         }

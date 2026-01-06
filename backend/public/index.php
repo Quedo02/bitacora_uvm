@@ -115,6 +115,7 @@ $router->group(function (Router $router) {
   
   $router->put('/api/examenes/examen/{examen_id}/pregunta/{pregunta_version_id}', [ExamenController::class, 'updatePuntosPregunta']);
   $router->delete('/api/examenes/examen/{examen_id}/pregunta/{pregunta_version_id}', [ExamenController::class, 'deletePreguntaExamen']);
+  $router->get('/api/examenes/mis-intentos/{examen_id}', [ExamenController::class, 'getMisIntentos']);
 });
 
 $router->comprobarRutas();
