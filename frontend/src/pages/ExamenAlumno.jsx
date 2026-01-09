@@ -15,7 +15,9 @@ import {
   FileText,
   ChevronLeft,
   ChevronRight,
+  XCircle,
 } from "lucide-react";
+import RespuestaRenderer from "../components/examenes/RespuestaRenderer";
 
 function unwrapResponse(data) {
   if (!data) return null;
@@ -169,6 +171,25 @@ function isAnswered(tipo, respuesta, contenido) {
     return orden.length > 0;
   }
   return false;
+}
+
+function tipoLabel(tipo) {
+  const map = {
+    opcion_multiple: "Opción múltiple",
+    verdadero_falso: "Verdadero/Falso",
+    abierta: "Respuesta abierta",
+    numerica: "Numérica",
+    completar: "Completar",
+    relacionar: "Relacionar",
+    ordenar: "Ordenar",
+  };
+  return map[tipo] || tipo;
+}
+
+function getPorcentajeAcierto(puntosObtenidos, puntosMax) {
+  const obt = Number(puntosObtenidos ?? 0);
+  const max = Number(puntosMax ?? 0);
+  return max > 0 ? (obt / max) * 100 : 0;
 }
 
 function RenderizarPregunta({ pregunta, respuesta, onChange, disabled }) {
@@ -520,11 +541,67 @@ function RenderizarPregunta({ pregunta, respuesta, onChange, disabled }) {
 
   if (tipo === "ordenar") {
     const items = pickOrdenarItems(contenido);
-    const curOrden = normalizeOrdenarInit(items, respuesta);
+
+    // ⭐ FIX: Los items YA vienen mezclados del backend
+    // Solo necesitamos mostrarlos en orden secuencial [0,1,2,3...]
+    // La permutación se usa SOLO en el backend para calificar
+    
+    // Obtener orden actual o inicializar secuencialmente
+    let curOrden;
+    if (
+      respuesta?.orden &&
+      Array.isArray(respuesta.orden) &&
+      respuesta.orden.length === items.length
+    ) {
+      // Ya existe una respuesta previa, usarla
+      curOrden = respuesta.orden.map((x) => Number(x));
+      console.log("📋 Usando orden guardado previamente:", curOrden);
+    } else {
+      // No hay respuesta previa, inicializar con orden secuencial
+      // Los items YA vienen mezclados del backend, así que [0,1,2,3] es el orden inicial
+      curOrden = Array.from({ length: items.length }, (_, i) => i);
+      console.log("✅ Inicializando con orden secuencial:", curOrden);
+
+      // Guardar orden inicial inmediatamente
+      if (!disabled) {
+        onChange({ orden: curOrden });
+      }
+    }
+
     const onMove = (from, to) => {
       if (disabled || to < 0 || to >= curOrden.length) return;
-      onChange({ orden: moveInArray(curOrden, from, to) });
+      const newOrden = moveInArray(curOrden, from, to);
+      onChange({ orden: newOrden });
     };
+
+    // Estado para drag and drop
+    const [draggedIdx, setDraggedIdx] = useState(null);
+
+    const handleDragStart = (e, idx) => {
+      if (disabled) return;
+      setDraggedIdx(idx);
+      e.dataTransfer.effectAllowed = "move";
+    };
+
+    const handleDragOver = (e, idx) => {
+      if (disabled) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+    };
+
+    const handleDrop = (e, dropIdx) => {
+      if (disabled) return;
+      e.preventDefault();
+      if (draggedIdx !== null && draggedIdx !== dropIdx) {
+        onMove(draggedIdx, dropIdx);
+      }
+      setDraggedIdx(null);
+    };
+
+    const handleDragEnd = () => {
+      setDraggedIdx(null);
+    };
+
     if (!items.length)
       return (
         <div className="p-4 bg-slate-50 rounded-xl text-sm text-slate-600">
@@ -535,21 +612,29 @@ function RenderizarPregunta({ pregunta, respuesta, onChange, disabled }) {
     return (
       <div className="space-y-3">
         <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3">
-          Usa los botones ↑ ↓ para ordenar los elementos de arriba a abajo
+          🖱️ Arrastra los elementos para reordenarlos, o usa los botones ↑ ↓
         </div>
         <ul className="space-y-2">
           {curOrden.map((optIdx, pos) => {
             const label = items[optIdx] ?? `Opción #${optIdx}`;
             const canUp = pos > 0;
             const canDown = pos < curOrden.length - 1;
+            const isDragging = draggedIdx === pos;
+
             return (
               <li
                 key={`${pos}-${optIdx}`}
+                draggable={!disabled}
+                onDragStart={(e) => handleDragStart(e, pos)}
+                onDragOver={(e) => handleDragOver(e, pos)}
+                onDrop={(e) => handleDrop(e, pos)}
+                onDragEnd={handleDragEnd}
                 className={[
                   "flex items-center gap-4 rounded-xl border-2 p-4 transition-all",
                   disabled
                     ? "bg-slate-50 border-slate-200"
-                    : "bg-white border-slate-200 hover:border-slate-300",
+                    : "bg-white border-slate-200 hover:border-slate-300 cursor-move",
+                  isDragging ? "opacity-50 scale-95" : "",
                 ].join(" ")}
               >
                 <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-brand-red to-brand-wine text-white text-sm font-bold shadow-sm">
@@ -895,10 +980,21 @@ export default function ExamenAlumno({ currentUser }) {
     );
   }
 
+  // ========== SECCIÓN CORREGIDA - intentoAVer ==========
   if (intentoAVer) {
+    const preguntasIntento = safeArray(intentoAVer.preguntas);
+    const totalPuntos = preguntasIntento.reduce(
+      (sum, p) => sum + Number(p.puntos_max ?? 0),
+      0
+    );
+    const puntosObtenidos = preguntasIntento.reduce(
+      (sum, p) => sum + Number(p.puntos_obtenidos ?? 0),
+      0
+    );
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-5xl mx-auto">
           <Button
             variant="outline_secondary"
             onClick={() => setIntentoAVer(null)}
@@ -907,63 +1003,169 @@ export default function ExamenAlumno({ currentUser }) {
             <ArrowLeft size={16} />
             Volver
           </Button>
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-xl">
-            <div className="flex items-center justify-between mb-6 pb-6 border-b border-slate-200">
-              <div>
-                <h1 className="text-2xl font-bold text-slate-900">
-                  Intento #{intentoAVer.intento?.intento_num || "?"}
-                </h1>
-                <div className="text-sm text-slate-600 mt-1">
-                  Enviado: {formatMx(intentoAVer.intento?.fin_real)}
+
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-xl overflow-hidden">
+            {/* Header con calificación */}
+            <div className="bg-gradient-to-r from-brand-red to-brand-wine p-8 text-white">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold mb-2">
+                    Intento #{intentoAVer.intento?.intento_num || "?"}
+                  </h1>
+                  <div className="text-sm opacity-90">
+                    Enviado: {formatMx(intentoAVer.intento?.fin_real)}
+                  </div>
                 </div>
-              </div>
-              <div className="text-right">
-                <div className="text-3xl font-bold text-brand-red">
-                  {Number(
-                    intentoAVer.intento?.calif_final ??
-                      intentoAVer.intento?.calif_auto ??
-                      0
-                  ).toFixed(2)}
+                <div className="text-right">
+                  <div className="text-5xl font-bold">
+                    {Number(
+                      intentoAVer.intento?.calif_final ??
+                        intentoAVer.intento?.calif_auto ??
+                        0
+                    ).toFixed(2)}
+                  </div>
+                  <div className="text-sm opacity-90 mt-1">
+                    {puntosObtenidos.toFixed(2)} / {totalPuntos.toFixed(2)}{" "}
+                    puntos
+                  </div>
                 </div>
-                <div className="text-xs text-slate-600">Calificación</div>
               </div>
             </div>
-            <div className="space-y-6">
-              {safeArray(intentoAVer.preguntas).map((p, idx) => (
-                <div
-                  key={p.pregunta_version_id || idx}
-                  className="rounded-xl border border-slate-200 p-6"
-                >
-                  <div className="flex items-start gap-4 mb-4">
-                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-slate-100 text-slate-700 text-sm font-bold">
-                      {idx + 1}
-                    </span>
-                    <div className="flex-1">
-                      <div className="text-base text-slate-900">
-                        {p.enunciado}
-                      </div>
-                      <div className="text-xs text-slate-500 mt-1">
-                        {p.puntos_obtenidos ?? 0} / {p.puntos_max ?? 1} puntos
-                      </div>
-                    </div>
-                  </div>
-                  <div className="ml-12 p-4 bg-slate-50 rounded-lg">
-                    <div className="text-xs font-medium text-slate-500 mb-2">
-                      Tu respuesta:
-                    </div>
-                    <div className="text-sm text-slate-700">
-                      {JSON.stringify(p.respuesta_alumno, null, 2) ||
-                        "Sin respuesta"}
-                    </div>
-                  </div>
+
+            {/* Preguntas */}
+            <div className="p-8">
+              {preguntasIntento.length === 0 ? (
+                <div className="text-center py-10 text-slate-500">
+                  No hay preguntas registradas
                 </div>
-              ))}
+              ) : (
+                <div className="space-y-6">
+                  {preguntasIntento.map((p, idx) => {
+                    const puntosObt = Number(p.puntos_obtenidos ?? 0);
+                    const puntosMax = Number(p.puntos_max ?? 1);
+                    const porcentaje = getPorcentajeAcierto(
+                      puntosObt,
+                      puntosMax
+                    );
+                    const tipoPreg = String(p.tipo || "").toLowerCase();
+                    const estadoRevision = String(p.estado_revision || "").toLowerCase();
+                    
+                    // Determinar si es pregunta abierta pendiente de revisión
+                    const esPendienteRevision = tipoPreg === "abierta" && 
+                      (estadoRevision === "pendiente" || estadoRevision === "pendiente_revision");
+
+                    let statusColor = "border-red-200 bg-red-50";
+                    let statusIcon = (
+                      <XCircle size={18} className="text-red-600" />
+                    );
+                    let statusText = "Incorrecta";
+                    let scoreColor = "text-red-600";
+
+                    if (esPendienteRevision) {
+                      // Pregunta abierta pendiente de revisión - mostrar en amarillo
+                      statusColor = "border-amber-200 bg-amber-50";
+                      statusIcon = (
+                        <AlertTriangle size={18} className="text-amber-600" />
+                      );
+                      statusText = "Pendiente de revisión";
+                      scoreColor = "text-amber-600";
+                    } else if (porcentaje === 100) {
+                      statusColor = "border-green-200 bg-green-50";
+                      statusIcon = (
+                        <CheckCircle size={18} className="text-green-600" />
+                      );
+                      statusText = "Correcta";
+                      scoreColor = "text-green-600";
+                    } else if (porcentaje > 0) {
+                      statusColor = "border-amber-200 bg-amber-50";
+                      statusIcon = (
+                        <div className="w-5 h-5 rounded-full bg-amber-500" />
+                      );
+                      statusText = "Parcial";
+                      scoreColor = "text-amber-600";
+                    }
+
+                    return (
+                      <div
+                        key={p.pregunta_version_id || idx}
+                        className={`rounded-xl border ${statusColor} overflow-hidden`}
+                      >
+                        {/* Header de pregunta */}
+                        <div className="p-5">
+                          <div className="flex items-start justify-between gap-4 mb-4">
+                            <div className="flex items-start gap-3 flex-1">
+                              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white border-2 border-slate-300 text-slate-700 text-sm font-bold shrink-0">
+                                {idx + 1}
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-2">
+                                  {statusIcon}
+                                  <span
+                                    className={`text-sm font-semibold ${scoreColor}`}
+                                  >
+                                    {statusText}
+                                  </span>
+                                  <span className="text-xs text-slate-500">
+                                    · {tipoLabel(p.tipo)}
+                                  </span>
+                                </div>
+                                <div className="text-base text-slate-900 leading-relaxed">
+                                  {p.enunciado}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div
+                                className={`text-xl font-bold ${scoreColor}`}
+                              >
+                                {puntosObt.toFixed(2)}
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                / {puntosMax.toFixed(2)}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Respuesta renderizada */}
+                          <div className="pl-11">
+                            <div className="rounded-xl border border-slate-200 bg-white p-4">
+                              <RespuestaRenderer
+                                tipo={p.tipo}
+                                respuesta={p.respuesta_alumno}
+                                contenido={p.contenido}
+                                respuestaCorrecta={p.respuesta_correcta}
+                                respuestaTexto={p.respuesta_texto}
+                                mostrarCorrectas={false}
+                                esVistaDocente={false}
+                                opcionesOrden={p.opciones_orden_json}
+                              />
+                            </div>
+
+                            {/* Feedback si existe */}
+                            {p.feedback && (
+                              <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                                <div className="text-xs font-semibold text-blue-700 mb-1">
+                                  Comentario del docente:
+                                </div>
+                                <div className="text-sm text-blue-900 whitespace-pre-wrap">
+                                  {p.feedback}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
     );
   }
+  // ========== FIN SECCIÓN CORREGIDA ==========
 
   if (enviado) {
     return (

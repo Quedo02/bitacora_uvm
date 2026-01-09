@@ -1,67 +1,32 @@
-// src/pages/examenes/ResultadoAlumno.jsx
+// src/pages/ResultadoAlumno.jsx
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import api from "../api/axios";
 import Button from "../components/ui/Button";
-import PreguntaRenderer, {
-  applyOrdenToContenido,
-  safeJsonParse,
-} from "../components/examenes/PreguntaRenderer";
+import RespuestaRenderer from "../components/examenes/RespuestaRenderer";
 import {
   ArrowLeft,
   CheckCircle,
   XCircle,
   Clock,
-  Award,
   Trophy,
-  TrendingUp,
-  FileText,
   Eye,
+  ChevronDown,
+  AlertCircle,
 } from "lucide-react";
 
-function unwrapResponse(data) {
-  if (!data) return null;
-  if (typeof data === "object" && data !== null && "response" in data)
-    return data.response;
-  return data;
-}
-
-function safeArray(v) {
-  if (Array.isArray(v)) return v;
-  if (v && typeof v === "object") return Object.values(v); // <- clave
-  return [];
-}
-
-function formatMx(mysqlDt) {
-  if (!mysqlDt) return "-";
-  const [d, t] = String(mysqlDt).split(" ");
-  if (!d) return String(mysqlDt);
-  const [yyyy, mm, dd] = d.split("-");
-  const hhmm = (t || "").slice(0, 5);
-  return `${dd}/${mm}/${yyyy} ${hhmm}`;
-}
-
-function getGradeColor(grade) {
-  if (grade >= 9) return "text-green-600";
-  if (grade >= 7) return "text-blue-600";
-  if (grade >= 6) return "text-amber-600";
-  return "text-red-600";
-}
-
-function getGradeBg(grade) {
-  if (grade >= 9) return "bg-green-100 border-green-200";
-  if (grade >= 7) return "bg-blue-100 border-blue-200";
-  if (grade >= 6) return "bg-amber-100 border-amber-200";
-  return "bg-red-100 border-red-200";
-}
-
-function getGradeLabel(grade) {
-  if (grade >= 9) return "Excelente";
-  if (grade >= 8) return "Muy bien";
-  if (grade >= 7) return "Bien";
-  if (grade >= 6) return "Aprobado";
-  return "Necesitas mejorar";
-}
+// Importar utilidades compartidas
+import {
+  unwrapResponse,
+  safeArray,
+  formatMx,
+  getGradeColor,
+  getGradeBg,
+  getGradeLabel,
+  calcularEstadisticas,
+  getPorcentajeAcierto,
+  tipoLabel,
+} from "../utils/examenUtils";
 
 export default function ResultadoAlumno({ currentUser }) {
   const { examenId } = useParams();
@@ -75,6 +40,9 @@ export default function ResultadoAlumno({ currentUser }) {
   const [intentos, setIntentos] = useState([]);
   const [intentoSeleccionado, setIntentoSeleccionado] = useState(null);
   const [detalleIntento, setDetalleIntento] = useState(null);
+
+  // Estado para controlar qué preguntas están expandidas
+  const [preguntasExpandidas, setPreguntasExpandidas] = useState({});
 
   useEffect(() => {
     if (!examenId) {
@@ -130,8 +98,11 @@ export default function ResultadoAlumno({ currentUser }) {
         const res = await api.get(
           `/api/examenes/intento/${intentoSeleccionado}/detalle`
         );
-        setDetalleIntento(unwrapResponse(res.data));
+        const data = unwrapResponse(res.data);
+        console.log("Detalle del intento:", data); // Debug
+        setDetalleIntento(data);
       } catch (e) {
+        console.error("Error al cargar detalle:", e);
         setDetalleIntento(null);
       } finally {
         setLoadingDetalle(false);
@@ -147,39 +118,25 @@ export default function ResultadoAlumno({ currentUser }) {
   }, [intentos]);
 
   const estadisticas = useMemo(() => {
-    const preguntas = safeArray(detalleIntento?.preguntas);
-    if (!preguntas.length) return null;
-
-    const totalPuntos = preguntas.reduce(
-      (sum, p) => sum + Number(p.puntos_max ?? 0),
-      0
-    );
-    const puntosObtenidos = preguntas.reduce(
-      (sum, p) => sum + Number(p.puntos_obtenidos ?? 0),
-      0
-    );
-
-    const correctas = preguntas.filter(
-      (p) => Number(p.puntos_obtenidos ?? 0) === Number(p.puntos_max ?? 0)
-    ).length;
-
-    const parciales = preguntas.filter((p) => {
-      const obt = Number(p.puntos_obtenidos ?? 0);
-      const max = Number(p.puntos_max ?? 0);
-      return obt > 0 && obt < max;
-    }).length;
-
-    const incorrectas = preguntas.length - correctas - parciales;
-
-    return {
-      totalPreguntas: preguntas.length,
-      correctas,
-      parciales,
-      incorrectas,
-      totalPuntos,
-      puntosObtenidos,
-    };
+    return calcularEstadisticas(detalleIntento?.preguntas);
   }, [detalleIntento]);
+
+  const intentoActual = useMemo(() => {
+    return intentos.find((i) => i.id === intentoSeleccionado);
+  }, [intentos, intentoSeleccionado]);
+
+  const califActual = useMemo(() => {
+    return Number(
+      intentoActual?.calif_final ?? intentoActual?.calif_auto ?? 0
+    );
+  }, [intentoActual]);
+
+  const togglePreguntaExpandida = (preguntaId) => {
+    setPreguntasExpandidas((prev) => ({
+      ...prev,
+      [preguntaId]: !prev[preguntaId],
+    }));
+  };
 
   if (loading) {
     return (
@@ -214,202 +171,158 @@ export default function ResultadoAlumno({ currentUser }) {
     );
   }
 
-  if (!examenInfo || intentos.length === 0) {
+  if (!intentos.length) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-        <div className="max-w-2xl mx-auto">
-          <Button
-            variant="outline_secondary"
-            onClick={() => navigate("/alumno/examenes")}
-            className="inline-flex items-center gap-2 mb-6"
-          >
-            <ArrowLeft size={16} />
-            Volver
-          </Button>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-xl">
-            <FileText size={48} className="mx-auto mb-4 text-slate-300" />
-            <div className="text-lg font-semibold text-slate-900 mb-2">
-              Sin resultados
-            </div>
-            <div className="text-sm text-slate-600">
-              No has realizado ningún intento de este examen
-            </div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-6">
+        <div className="max-w-md w-full rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-xl">
+          <Trophy size={64} className="mx-auto mb-4 text-slate-300" />
+          <div className="text-lg font-semibold text-slate-900 mb-2">
+            Sin intentos
           </div>
+          <div className="text-sm text-slate-600 mb-6">
+            Aún no has realizado este examen
+          </div>
+          <Button variant="primary" onClick={() => navigate(`/alumno/examen/${examenId}`)}>
+            Iniciar examen
+          </Button>
         </div>
       </div>
     );
   }
 
-  const intentoActual = intentos.find((i) => i.id === intentoSeleccionado);
-  const califActual = Number(
-    intentoActual?.calif_final ?? intentoActual?.calif_auto ?? 0
-  );
-
-  const totalPreg = estadisticas?.totalPreguntas ?? 0;
-  const wCorrectas = totalPreg ? (estadisticas.correctas / totalPreg) * 100 : 0;
-  const wParciales = totalPreg ? (estadisticas.parciales / totalPreg) * 100 : 0;
-  const wIncorrectas = totalPreg
-    ? (estadisticas.incorrectas / totalPreg) * 100
+  // Calcular width de barras de progreso
+  const wCorrectas = estadisticas
+    ? (estadisticas.correctas / estadisticas.totalPreguntas) * 100
+    : 0;
+  const wParciales = estadisticas
+    ? (estadisticas.parciales / estadisticas.totalPreguntas) * 100
+    : 0;
+  const wIncorrectas = estadisticas
+    ? (estadisticas.incorrectas / estadisticas.totalPreguntas) * 100
     : 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
-      <div className="max-w-5xl mx-auto">
-        <Button
-          variant="outline_secondary"
-          onClick={() => navigate("/alumno/examenes")}
-          className="inline-flex items-center gap-2 mb-6"
-        >
-          <ArrowLeft size={16} />
-          Volver a mis exámenes
-        </Button>
+      <div className="max-w-6xl mx-auto">
+        {/* Header con información del examen */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <Button
+              variant="outline_secondary"
+              onClick={() => navigate("/alumno/examenes")}
+              className="inline-flex items-center gap-2"
+            >
+              <ArrowLeft size={16} />
+              Volver
+            </Button>
 
-        {/* Header / Mejor calificación */}
-        <div
-          className={`rounded-2xl border-2 p-8 shadow-xl mb-6 ${getGradeBg(
-            mejorCalificacion
-          )}`}
-        >
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="text-center md:text-left">
-              <h1 className="text-2xl font-bold text-slate-900 mb-1">
+            <div className="text-right">
+              <div className="text-xs text-slate-500">
                 {examenInfo?.tipo === "parcial"
-                  ? `Parcial ${examenInfo?.parcial_id || ""}`
-                  : "Examen Final"}
-              </h1>
-              <div className="text-sm text-slate-600">
-                {formatMx(examenInfo?.fecha_inicio)} ·{" "}
-                {examenInfo?.duracion_min} minutos
+                  ? `Parcial ${examenInfo.parcial_id}`
+                  : "Final"}
               </div>
-            </div>
-
-            <div className="text-center">
-              <div className="flex items-center justify-center gap-2 mb-1">
-                <Trophy
-                  size={24}
-                  className={getGradeColor(mejorCalificacion)}
-                />
-                <span className="text-xs font-medium text-slate-600">
-                  Mejor calificación
-                </span>
-              </div>
-              <div
-                className={`text-5xl font-bold ${getGradeColor(
-                  mejorCalificacion
-                )}`}
-              >
-                {mejorCalificacion.toFixed(2)}
-              </div>
-              <div className="text-sm font-medium text-slate-600 mt-1">
-                {getGradeLabel(mejorCalificacion)}
+              <div className="text-sm font-medium text-slate-900">
+                Examen #{examenInfo?.id}
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Sidebar */}
-          <div className="lg:col-span-1 space-y-4">
-            {/* Intentos */}
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                <TrendingUp size={18} className="text-slate-500" />
-                Tus intentos ({intentos.length})
-              </h2>
-
-              <div className="space-y-2">
-                {intentos.map((i) => {
-                  const calif = Number(i.calif_final ?? i.calif_auto ?? 0);
-                  const isSelected = i.id === intentoSeleccionado;
-                  const esMejor = calif === mejorCalificacion;
-
-                  return (
-                    <button
-                      key={i.id}
-                      type="button"
-                      onClick={() => setIntentoSeleccionado(i.id)}
-                      className={[
-                        "w-full p-3 rounded-lg border-2 text-left transition-all",
-                        isSelected
-                          ? "border-brand-red bg-brand-red/5"
-                          : "border-slate-200 hover:border-slate-300 bg-white",
-                      ].join(" ")}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-sm font-medium text-slate-900 flex items-center gap-2">
-                            Intento {i.intento_num}
-                            {esMejor && (
-                              <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-xs">
-                                Mejor
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-xs text-slate-500 mt-0.5">
-                            {formatMx(i.fin_real)}
-                          </div>
-                        </div>
-                        <div
-                          className={`text-lg font-bold ${getGradeColor(
-                            calif
-                          )}`}
-                        >
-                          {calif.toFixed(2)}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
+          {/* Calificación destacada */}
+          <div
+            className={`rounded-2xl border p-8 mb-6 text-center ${getGradeBg(
+              mejorCalificacion
+            )}`}
+          >
+            <div className="flex items-center justify-center gap-3 mb-3">
+              <Trophy size={32} className={getGradeColor(mejorCalificacion)} />
+              <div className={`text-5xl font-bold ${getGradeColor(mejorCalificacion)}`}>
+                {mejorCalificacion.toFixed(2)}
               </div>
             </div>
+            <div className="text-lg font-semibold text-slate-900 mb-1">
+              {getGradeLabel(mejorCalificacion)}
+            </div>
+            <div className="text-sm text-slate-600">
+              Tu mejor calificación
+            </div>
+          </div>
 
-            {/* Resumen */}
+          {/* Selector de intentos */}
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-2">
+              Selecciona un intento para ver el detalle:
+            </label>
+            <select
+              value={intentoSeleccionado || ""}
+              onChange={(e) => setIntentoSeleccionado(Number(e.target.value))}
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm focus:border-brand-red focus:ring-2 focus:ring-brand-red/20"
+            >
+              {intentos.map((int) => {
+                const calif = Number(int.calif_final ?? int.calif_auto ?? 0);
+                return (
+                  <option key={int.id} value={int.id}>
+                    Intento {int.intento_num} - {calif.toFixed(2)} -{" "}
+                    {formatMx(int.fin_real)}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        </div>
+
+        {/* Detalle del intento seleccionado */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Sidebar con estadísticas */}
+          <div className="lg:col-span-1 space-y-4">
+            {/* Estadísticas */}
             {estadisticas && (
               <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h2 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <Award size={18} className="text-slate-500" />
-                  Resumen
-                </h2>
+                <h3 className="text-sm font-semibold text-slate-900 mb-4">
+                  Estadísticas
+                </h3>
 
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                    <span className="text-sm text-slate-600 flex items-center gap-2">
-                      <CheckCircle size={16} className="text-green-500" />
-                      Correctas
-                    </span>
+                <div className="space-y-3 mb-4">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle size={16} className="text-green-600" />
+                      <span className="text-sm text-slate-600">Correctas</span>
+                    </div>
                     <span className="font-semibold text-green-600">
                       {estadisticas.correctas}
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                    <span className="text-sm text-slate-600 flex items-center gap-2">
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
                       <div className="w-4 h-4 rounded-full bg-amber-500" />
-                      Parciales
-                    </span>
+                      <span className="text-sm text-slate-600">Parciales</span>
+                    </div>
                     <span className="font-semibold text-amber-600">
                       {estadisticas.parciales}
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between py-2 border-b border-slate-100">
-                    <span className="text-sm text-slate-600 flex items-center gap-2">
-                      <XCircle size={16} className="text-red-500" />
-                      Incorrectas
-                    </span>
+                  <div className="flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <XCircle size={16} className="text-red-600" />
+                      <span className="text-sm text-slate-600">Incorrectas</span>
+                    </div>
                     <span className="font-semibold text-red-600">
                       {estadisticas.incorrectas}
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between py-2">
-                    <span className="text-sm text-slate-600">Puntos</span>
-                    <span className="font-semibold text-slate-900">
-                      {estadisticas.puntosObtenidos.toFixed(2)} /{" "}
-                      {estadisticas.totalPuntos.toFixed(2)}
+                  <div className="pt-3 border-t border-slate-200">
+                    <span className="text-xs text-slate-500">
+                      Puntos obtenidos
                     </span>
+                    <div className="mt-1">
+                      <span className="font-semibold text-slate-900">
+                        {estadisticas.puntosObtenidos.toFixed(2)} /{" "}
+                        {estadisticas.totalPuntos.toFixed(2)}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -434,7 +347,7 @@ export default function ResultadoAlumno({ currentUser }) {
 
             {/* Calificación del intento seleccionado */}
             <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-2">
                 <div>
                   <div className="text-xs text-slate-500">
                     Calificación del intento
@@ -458,7 +371,7 @@ export default function ResultadoAlumno({ currentUser }) {
             </div>
           </div>
 
-          {/* Detail */}
+          {/* Panel de detalle */}
           <div className="lg:col-span-2">
             <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="text-base font-semibold text-slate-900 mb-4 flex items-center gap-2">
@@ -468,11 +381,12 @@ export default function ResultadoAlumno({ currentUser }) {
 
               {loadingDetalle ? (
                 <div className="text-center py-10 text-slate-500">
-                  <Clock size={32} className="mx-auto mb-2 text-slate-300" />
+                  <Clock size={32} className="mx-auto mb-2 text-slate-300 animate-spin" />
                   <div>Cargando detalle...</div>
                 </div>
               ) : !detalleIntento ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-center">
+                  <AlertCircle size={32} className="mx-auto mb-2 text-slate-400" />
                   <div className="text-sm font-semibold text-slate-800">
                     No se pudo cargar el detalle
                   </div>
@@ -482,6 +396,7 @@ export default function ResultadoAlumno({ currentUser }) {
                 </div>
               ) : safeArray(detalleIntento?.preguntas).length === 0 ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-center">
+                  <AlertCircle size={32} className="mx-auto mb-2 text-slate-400" />
                   <div className="text-sm font-semibold text-slate-800">
                     Sin preguntas
                   </div>
@@ -490,14 +405,13 @@ export default function ResultadoAlumno({ currentUser }) {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-5">
+                <div className="space-y-4">
                   {safeArray(detalleIntento.preguntas).map((p, idx) => {
                     const puntosObt = Number(p.puntos_obtenidos ?? 0);
                     const puntosMax = Number(p.puntos_max ?? 1);
-                    const porcentaje =
-                      puntosMax > 0 ? (puntosObt / puntosMax) * 100 : 0;
+                    const porcentaje = getPorcentajeAcierto(puntosObt, puntosMax);
 
-                    let statusColor = "bg-red-50 border-red-200";
+                    let statusColor = "border-red-200 bg-red-50";
                     let statusIcon = (
                       <XCircle size={16} className="text-red-600" />
                     );
@@ -505,14 +419,14 @@ export default function ResultadoAlumno({ currentUser }) {
                     let scoreColor = "text-red-600";
 
                     if (porcentaje === 100) {
-                      statusColor = "bg-green-50 border-green-200";
+                      statusColor = "border-green-200 bg-green-50";
                       statusIcon = (
                         <CheckCircle size={16} className="text-green-600" />
                       );
                       statusText = "Correcta";
                       scoreColor = "text-green-600";
                     } else if (porcentaje > 0) {
-                      statusColor = "bg-amber-50 border-amber-200";
+                      statusColor = "border-amber-200 bg-amber-50";
                       statusIcon = (
                         <div className="w-4 h-4 rounded-full bg-amber-500" />
                       );
@@ -520,82 +434,83 @@ export default function ResultadoAlumno({ currentUser }) {
                       scoreColor = "text-amber-600";
                     }
 
-                    const contenidoObj = safeJsonParse(p.contenido, p.contenido);
-                    const ordenObj = safeJsonParse(p.opciones_orden_json, null);
-
-                    let contenidoOrdenado = contenidoObj;
-                    try {
-                      contenidoOrdenado = ordenObj
-                        ? applyOrdenToContenido(p.tipo, contenidoObj, ordenObj)
-                        : contenidoObj;
-                    } catch (err) {
-                      contenidoOrdenado = contenidoObj;
-                    }
-
-                    // Respuesta del alumno (JSON string -> object)
-                    const respuestaAlumno = safeJsonParse(
-                      p.respuesta_alumno,
-                      null
-                    );
+                    const preguntaId = p.pregunta_version_id || idx;
+                    const estaExpandida = preguntasExpandidas[preguntaId];
 
                     return (
                       <div
-                        key={p.pregunta_version_id || idx}
-                        className={`rounded-2xl border p-5 ${statusColor}`}
+                        key={preguntaId}
+                        className={`rounded-xl border p-4 ${statusColor} transition-colors`}
                       >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex items-start gap-3 min-w-0">
+                        {/* Header clickeable */}
+                        <button
+                          onClick={() => togglePreguntaExpandida(preguntaId)}
+                          className="w-full flex items-start justify-between gap-4 text-left"
+                        >
+                          <div className="flex items-start gap-3 min-w-0 flex-1">
                             <div className="mt-0.5 shrink-0">{statusIcon}</div>
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <div className="text-sm font-semibold text-slate-900">
                                 Pregunta {idx + 1}{" "}
                                 <span className="text-xs font-medium text-slate-500">
                                   · {statusText}
                                 </span>
                               </div>
-                              <div className="mt-1 text-sm text-slate-800 whitespace-pre-wrap">
+                              <div className="mt-1 text-xs text-slate-600">
+                                {tipoLabel(p.tipo)}
+                              </div>
+                              <div className="mt-1 text-sm text-slate-800 line-clamp-2">
                                 {p.enunciado}
                               </div>
+                            </div>
+                          </div>
 
-                              {!!p.estado_revision && (
-                                <div className="mt-2 text-xs text-slate-500">
-                                  Revisión:{" "}
-                                  <span className="font-medium text-slate-700">
-                                    {String(p.estado_revision)}
-                                  </span>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="text-right">
+                              <div className={`text-lg font-bold ${scoreColor}`}>
+                                {puntosObt.toFixed(2)}
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                / {puntosMax.toFixed(2)}
+                              </div>
+                            </div>
+                            <ChevronDown
+                              size={20}
+                              className={`text-slate-400 transition-transform ${
+                                estaExpandida ? "rotate-180" : ""
+                              }`}
+                            />
+                          </div>
+                        </button>
+
+                        {/* Detalle expandible */}
+                        {estaExpandida && (
+                          <div className="mt-4 pt-4 border-t border-slate-200">
+                            <div className="mb-3 text-sm font-medium text-slate-700">
+                              {p.enunciado}
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-white p-4">
+                              <RespuestaRenderer
+                                tipo={p.tipo}
+                                respuesta={p.respuesta_alumno}
+                                contenido={p.contenido}
+                                respuestaCorrecta={p.respuesta_correcta}
+                                respuestaTexto={p.respuesta_texto}
+                                mostrarCorrectas={false}
+                                esVistaDocente={false}
+                              />
+                            </div>
+
+                            {p.feedback && (
+                              <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                                <div className="text-xs font-semibold text-blue-700 mb-1">
+                                  Comentario del docente:
                                 </div>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="text-right shrink-0">
-                            <div className={`text-lg font-bold ${scoreColor}`}>
-                              {puntosObt.toFixed(2)}
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              / {puntosMax.toFixed(2)}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5">
-                          <PreguntaRenderer
-                            tipo={p.tipo}
-                            contenido={contenidoOrdenado}
-                            respuesta={respuestaAlumno}
-                            disabled
-                            onChange={() => {}}
-                          />
-                        </div>
-
-                        {p.feedback && (
-                          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-                            <div className="text-xs font-semibold text-slate-600 mb-1">
-                              Feedback
-                            </div>
-                            <div className="text-sm text-slate-800 whitespace-pre-wrap">
-                              {p.feedback}
-                            </div>
+                                <div className="text-sm text-blue-900 whitespace-pre-wrap">
+                                  {p.feedback}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -605,13 +520,6 @@ export default function ResultadoAlumno({ currentUser }) {
               )}
             </div>
           </div>
-        </div>
-
-        {/* Footer helper */}
-        <div className="mt-6 text-center text-xs text-slate-500">
-          Si ves algo raro en el orden de opciones, revisa que el backend esté
-          enviando <span className="font-medium">opciones_orden_json</span> por
-          pregunta.
         </div>
       </div>
     </div>

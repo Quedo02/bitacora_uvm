@@ -15,6 +15,9 @@ use Model\PreguntaVersion;
 use Model\Pregunta;
 use Model\MateriaArea;
 use Model\CoordinadorProfile;
+use Controllers\CalificacionController;
+use Model\CalificacionExamenParcial;
+use Model\CalificacionExamenFinal;
 
 class ExamenController
 {
@@ -434,7 +437,12 @@ class ExamenController
             $ex = new Examen((array)$exDB);
             $ex->estado = 'cerrado';
             $ok = $ex->actualizar();
-            self::json($ok ? 200 : 400, $ok ? 'Cerrado' : 'No se pudo cerrar');
+            $resultCalif = CalificacionController::guardarCalificacionesBitacora($eid);
+            $response = [
+                'mensaje' => 'Examen cerrado exitosamente',
+                'calificaciones' => $resultCalif
+            ];
+            self::json($ok ? 200 : 400, $ok ? $response : 'No se pudo cerrar');
         } catch (\Throwable $e) {
             self::json(500, 'Error interno');
         }
@@ -573,7 +581,8 @@ class ExamenController
                     'enunciado' => (string)$pv->enunciado,
                     'contenido' => $contenido,
                     'orden' => $orden,
-                    'puntos' => (float)$it->puntos
+                    'puntos' => (float)$it->puntos,
+                    'opciones_orden' => $opOrden  // Esta línea soluciona todo
                 ];
 
                 $orden++;
@@ -699,15 +708,42 @@ class ExamenController
                 $corr = json_decode((string)$pv->respuesta_json, true);
                 if (!is_array($corr)) $corr = [];
 
-                $punt = self::autoCalificar((string)$pv->tipo, $respJson, (string)$respTexto, $corr);
+                // ⭐ FIX: Obtener opciones_orden para preguntas de ordenar
+                $opcionesOrden = null;
+                $eipRow = ExamenIntentoPregunta::SQL("
+                    SELECT opciones_orden_json 
+                    FROM examen_intento_pregunta 
+                    WHERE examen_intento_id = {$iid} AND pregunta_version_id = {$pvId} 
+                    LIMIT 1
+                ");
+                if (!empty($eipRow) && $eipRow[0]->opciones_orden_json) {
+                    $opcionesOrden = json_decode($eipRow[0]->opciones_orden_json, true);
+                }
+
+                // ⭐ FIX: Pasar opciones_orden al autocalificador
+                $punt = self::autoCalificar((string)$pv->tipo, $respJson, (string)$respTexto, $corr, $opcionesOrden);
                 $puntFinal = $punt * $maxPts;
-                $total += $puntFinal;
+
+                // ⭐ FIX: Solo sumar al total si NO es pregunta abierta
+                $tipoPreg = (string)$pv->tipo;
+                if ($tipoPreg !== 'abierta') {
+                    $total += $puntFinal;
+                }
+                // Las preguntas abiertas quedan en 0 hasta que el docente las califique
 
                 // guardar puntaje_auto
                 if ($respId) {
                     $r = new ExamenRespuesta((array)ExamenRespuesta::find($respId));
                     $r->puntaje_auto = $puntFinal;
-                    $r->estado_revision = 'pendiente';
+
+                    // ⭐ FIX: Si es pregunta abierta con respuesta, marcar como pendiente de revisión
+                    if ($tipoPreg === 'abierta' && $respTexto && trim($respTexto) !== '') {
+                        $r->estado_revision = 'pendiente_revision';
+                        error_log("Pregunta abierta #{$pvId} marcada como pendiente_revision");
+                    } else {
+                        $r->estado_revision = 'pendiente';
+                    }
+
                     $r->actualizar();
                 } else {
                     $r = new ExamenRespuesta([
@@ -716,7 +752,9 @@ class ExamenController
                         'respuesta_json' => $respJson ? json_encode($respJson, JSON_UNESCAPED_UNICODE) : null,
                         'respuesta_texto' => $respTexto,
                         'puntaje_auto' => $puntFinal,
-                        'estado_revision' => 'pendiente'
+                        'estado_revision' => ($tipoPreg === 'abierta' && $respTexto && trim($respTexto) !== '')
+                            ? 'pendiente_revision'
+                            : 'pendiente'
                     ]);
                     $r->crear();
                 }
@@ -797,7 +835,8 @@ class ExamenController
     // =========================
     //  GET /api/examenes/intento/{intento_id}/detalle
     // =========================
-    public static function getIntentoDetalle(Router $router, $intento_id): void{
+    public static function getIntentoDetalle(Router $router, $intento_id): void
+    {
         try {
             self::requireMethod('GET');
 
@@ -810,6 +849,31 @@ class ExamenController
             $ex = Examen::find((int)$intento->examen_id);
             if (!$ex) self::json(404, 'Examen no encontrado');
 
+            // Verificar permisos
+            $uid = self::uid();
+            $rol = self::rol();
+
+            $esDocente = in_array($rol, [1, 2, 3, 4], true); // admin, coord, docente, docente TC
+            $esAlumno = $rol === 5;
+
+            if ($esDocente) {
+                // Verificar que sea su sección (si es docente no admin)
+                if (self::isDocente() && !self::isAdmin()) {
+                    if (!self::docenteEsDeSeccion($uid, (int)$ex->seccion_id)) {
+                        self::json(403, 'No autorizado');
+                    }
+                }
+            } elseif ($esAlumno) {
+                // Verificar que el intento pertenezca al alumno
+                $insc = Inscripcion::find((int)$intento->inscripcion_id);
+                if (!$insc || (int)$insc->estudiante_id !== $uid) {
+                    self::json(403, 'No autorizado');
+                }
+            } else {
+                self::json(403, 'No autorizado');
+            }
+
+            // ⭐ CRÍTICO: Incluir pv.respuesta_json para mostrar respuestas correctas
             $preguntas = ExamenIntentoPregunta::SQL("
                 SELECT
                     eip.examen_intento_id,
@@ -820,11 +884,13 @@ class ExamenController
                     pv.enunciado,
                     pv.tipo,
                     pv.contenido_json AS contenido,
+                    pv.respuesta_json AS respuesta_correcta,
 
                     COALESCE(ep.puntos, 1.00) AS puntos_max,
                     COALESCE(er.puntaje_manual, er.puntaje_auto, 0.00) AS puntos_obtenidos,
 
                     er.respuesta_json AS respuesta_alumno,
+                    er.respuesta_texto,
                     er.estado_revision,
                     er.feedback
 
@@ -875,49 +941,286 @@ class ExamenController
             if (!$ex) self::json(404, 'Examen no encontrado');
 
             if (self::isDocente() && !self::isAdmin()) {
-                if (!self::docenteEsDeSeccion(self::uid(), (int)$ex->seccion_id)) self::json(403, 'No autorizado');
+                if (!self::docenteEsDeSeccion(self::uid(), (int)$ex->seccion_id)) {
+                    self::json(403, 'No autorizado');
+                }
             }
 
             $data = self::body();
-            $ajustes = $data['ajustes'] ?? [];
-            if (!is_array($ajustes)) $ajustes = [];
 
-            $sumManual = 0.0;
-
-            foreach ($ajustes as $a) {
-                $respuestaId = (int)($a['respuesta_id'] ?? 0);
-                if ($respuestaId <= 0) continue;
-
-                $respDB = ExamenRespuesta::find($respuestaId);
-                if (!$respDB) continue;
-
-                $resp = new ExamenRespuesta((array)$respDB);
-                if (array_key_exists('puntaje_manual', $a)) {
-                    $resp->puntaje_manual = (float)$a['puntaje_manual'];
-                    $sumManual += (float)$a['puntaje_manual'];
-                }
-                if (array_key_exists('feedback', $a)) {
-                    $resp->feedback = $a['feedback'];
-                }
-                $resp->estado_revision = 'revisada';
-                $resp->actualizar();
+            // ========== NUEVO: Validar comentarios obligatorios ==========
+            $comentariosGenerales = trim($data['comentarios'] ?? '');
+            if (empty($comentariosGenerales)) {
+                self::json(400, 'Los comentarios son obligatorios');
             }
 
-            $califManual = array_key_exists('calif_manual', $data) ? (float)$data['calif_manual'] : $sumManual;
+            // ========== NUEVO: Soportar ajustes por pregunta ==========
+            $ajustesPorPregunta = $data['ajustes_preguntas'] ?? [];
+            if (is_array($ajustesPorPregunta) && !empty($ajustesPorPregunta)) {
+                foreach ($ajustesPorPregunta as $ajuste) {
+                    $pvId = (int)($ajuste['pregunta_version_id'] ?? 0);
+                    $puntosManual = isset($ajuste['puntos_manual']) ? (float)$ajuste['puntos_manual'] : null;
+                    $feedback = $ajuste['feedback'] ?? null;
 
-            $califAuto = (float)($intentoDB->calif_auto ?? 0);
-            $califFinal = array_key_exists('calif_final', $data) ? (float)$data['calif_final'] : ($califAuto + $califManual);
+                    if ($pvId <= 0) continue;
 
+                    $respRow = ExamenRespuesta::SQL("
+            SELECT id FROM examen_respuesta 
+            WHERE examen_intento_id = {$iid} 
+              AND pregunta_version_id = {$pvId} 
+            LIMIT 1
+        ");
+
+                    if (empty($respRow)) continue;
+
+                    $respId = (int)$respRow[0]->id;
+                    $resp = new ExamenRespuesta((array)ExamenRespuesta::find($respId));
+
+                    if ($puntosManual !== null) {
+                        $resp->puntaje_manual = $puntosManual;
+                    }
+                    if ($feedback !== null) {
+                        $resp->feedback = $feedback;
+                    }
+                    $resp->estado_revision = 'revisada';
+                    $resp->actualizar();
+                }
+            }
+
+            // ========== Calcular calificación final ==========
+            // ⭐ PRIORIDAD 1: Si hay calif_final explícita del docente, USARLA
+            if (isset($data['calif_final']) && $data['calif_final'] !== null && $data['calif_final'] !== '') {
+                $califFinal = (float)$data['calif_final'];
+                error_log("✅ [PRIORIDAD 1] Usando calif_final proporcionada por docente: {$califFinal}");
+            } else {
+                // ⭐ PRIORIDAD 2: Recalcular desde puntajes (manual tiene prioridad sobre auto)
+                $pregsRows = ExamenIntentoPregunta::SQL("
+        SELECT eip.pregunta_version_id,
+               ep.puntos as puntos_max,
+               er.puntaje_manual,
+               er.puntaje_auto
+        FROM examen_intento_pregunta eip
+        JOIN examen_pregunta ep ON ep.pregunta_version_id = eip.pregunta_version_id 
+                                AND ep.examen_id = {$ex->id}
+        LEFT JOIN examen_respuesta er ON er.examen_intento_id = eip.examen_intento_id
+                                       AND er.pregunta_version_id = eip.pregunta_version_id
+        WHERE eip.examen_intento_id = {$iid}
+    ");
+
+                $califFinal = 0.0;
+                foreach ($pregsRows as $row) {
+                    // Usar puntaje manual si existe, si no usar automático
+                    $puntos = $row->puntaje_manual !== null
+                        ? (float)$row->puntaje_manual
+                        : (float)($row->puntaje_auto ?? 0);
+                    $califFinal += $puntos;
+                }
+                error_log("✅ [PRIORIDAD 2] Calif_final calculada desde puntajes: {$califFinal}");
+            }
+
+            // Actualizar intento
             $intento = new ExamenIntento((array)$intentoDB);
-            $intento->calif_manual = $califManual;
+            $intento->calif_manual = $califFinal - (float)($intentoDB->calif_auto ?? 0);
             $intento->calif_final = $califFinal;
+            $intento->comentarios_docente = $comentariosGenerales;
             $intento->estado = 'revisado';
             $ok = $intento->actualizar();
 
-            self::json($ok ? 200 : 400, $ok ? ['calif_final' => $califFinal] : 'No se pudo calificar');
+            if (!$ok) {
+                self::json(400, 'No se pudo calificar');
+            }
+
+            error_log("✅ Intento actualizado - calif_auto: {$intentoDB->calif_auto}, calif_manual: {$intento->calif_manual}, calif_final: {$califFinal}");
+
+            // ========== REGISTRAR EN BITÁCORA ==========
+            try {
+                error_log("🔄 Registrando en bitácora - calif_final: {$califFinal}");
+
+                self::registrarExamenEnBitacora(
+                    (int)$intentoDB->inscripcion_id,
+                    (int)$ex->seccion_id,
+                    (string)$ex->tipo,
+                    $ex->parcial_id !== null ? (int)$ex->parcial_id : null,
+                    $califFinal, // ⭐ USAR calif_final (NO calif_auto)
+                    $comentariosGenerales
+                );
+
+                error_log("✅ Registrado exitosamente en bitácora con valor: {$califFinal}");
+            } catch (\Throwable $e) {
+                error_log("❌ Error al registrar en bitácora: " . $e->getMessage());
+                error_log("Stack trace: " . $e->getTraceAsString());
+            }
+
+            // ========== FIX: GUARDAR EN calificacion_examen_parcial/final ==========
+            try {
+                $inscId = (int)$intentoDB->inscripcion_id;
+
+                if ((string)$ex->tipo === 'parcial' && $ex->parcial_id !== null) {
+                    $parcialId = (int)$ex->parcial_id;
+
+                    // Buscar si ya existe
+                    $exists = Examen::SQL("
+                        SELECT id FROM calificacion_examen_parcial 
+                        WHERE inscripcion_id = {$inscId} AND parcial_id = {$parcialId} 
+                        LIMIT 1
+                    ");
+
+                    if (empty($exists)) {
+                        // Insertar
+                        Examen::SQL("
+                            INSERT INTO calificacion_examen_parcial 
+                            (inscripcion_id, parcial_id, calificacion, created_at, updated_at)
+                            VALUES ({$inscId}, {$parcialId}, " . (float)$califFinal . ", NOW(), NOW())
+                        ");
+                        error_log("✅ Insertado en calificacion_examen_parcial: inscripcion={$inscId}, parcial={$parcialId}, calif={$califFinal}");
+                    } else {
+                        // Actualizar
+                        $id = (int)$exists[0]->id;
+                        Examen::SQL("
+                            UPDATE calificacion_examen_parcial 
+                            SET calificacion = " . (float)$califFinal . ", updated_at = NOW() 
+                            WHERE id = {$id}
+                        ");
+                        error_log("✅ Actualizado en calificacion_examen_parcial: id={$id}, calif={$califFinal}");
+                    }
+                } elseif ((string)$ex->tipo === 'final') {
+                    // Buscar si ya existe
+                    $exists = Examen::SQL("
+                        SELECT id FROM calificacion_examen_final 
+                        WHERE inscripcion_id = {$inscId} 
+                        LIMIT 1
+                    ");
+
+                    if (empty($exists)) {
+                        Examen::SQL("
+                            INSERT INTO calificacion_examen_final 
+                            (inscripcion_id, calificacion, created_at, updated_at)
+                            VALUES ({$inscId}, " . (float)$califFinal . ", NOW(), NOW())
+                        ");
+                        error_log("✅ Insertado en calificacion_examen_final");
+                    } else {
+                        $id = (int)$exists[0]->id;
+                        Examen::SQL("
+                            UPDATE calificacion_examen_final 
+                            SET calificacion = " . (float)$califFinal . ", updated_at = NOW() 
+                            WHERE id = {$id}
+                        ");
+                        error_log("✅ Actualizado en calificacion_examen_final");
+                    }
+                }
+            } catch (\Throwable $e) {
+                error_log("❌ Error al guardar en calificacion_examen_parcial/final: " . $e->getMessage());
+            }
+
+            self::json(200, [
+                'calif_final' => $califFinal,
+                'mensaje' => 'Calificación guardada y registrada en bitácora'
+            ]);
         } catch (\Throwable $e) {
-            self::json(500, 'Error interno');
+            error_log("❌ Error en calificarIntento: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+            self::json(500, 'Error interno: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Registra la calificación del examen en la bitácora como actividad
+     */
+    private static function registrarExamenEnBitacora(
+        int $inscripcionId,
+        int $seccionId,
+        string $tipoExamen,
+        ?int $parcialId,
+        float $calificacion,
+        ?string $observaciones
+    ): void {
+        error_log("📝 registrarExamenEnBitacora - inscripcion_id: {$inscripcionId}, calificacion: {$calificacion}");
+
+        // 1. Determinar nombre y parcial_id final
+        if ($tipoExamen === 'parcial' && $parcialId) {
+            $nombreActividad = "Examen Parcial {$parcialId}";
+            $parcialIdFinal = $parcialId;
+        } elseif ($tipoExamen === 'final') {
+            $nombreActividad = "Examen Final Semestral";
+            $parcialIdFinal = 4; // Ajustar si usas NULL para finales
+        } else {
+            throw new \Exception("Tipo de examen inválido");
+        }
+
+        error_log("📝 Actividad: {$nombreActividad}, parcial_id: {$parcialIdFinal}");
+
+        // 2. Buscar actividad
+        $sqlBuscar = "
+        SELECT id 
+        FROM actividad 
+        WHERE seccion_id = {$seccionId}
+          AND parcial_id = {$parcialIdFinal}
+          AND componente = 'examen'
+          AND nombre = '" . addslashes($nombreActividad) . "'
+        LIMIT 1
+    ";
+
+        $existe = ExamenIntento::SQL($sqlBuscar);
+
+        if (empty($existe)) {
+            error_log("📝 Actividad no existe, creando...");
+            // Crear actividad
+            $sqlCrear = "
+            INSERT INTO actividad 
+            (seccion_id, parcial_id, componente, nombre, peso_en_componente, created_at, updated_at)
+            VALUES 
+            ({$seccionId}, {$parcialIdFinal}, 'examen', '" . addslashes($nombreActividad) . "', 100, NOW(), NOW())
+        ";
+            ExamenIntento::SQL($sqlCrear);
+            $existe = ExamenIntento::SQL($sqlBuscar);
+
+            if (empty($existe)) {
+                throw new \Exception("No se pudo crear la actividad");
+            }
+            error_log("✅ Actividad creada con ID: " . $existe[0]->id);
+        }
+
+        $actividadId = (int)$existe[0]->id;
+        error_log("📝 actividad_id: {$actividadId}");
+
+        // 3. Registrar calificación
+        $sqlBuscarCalif = "
+        SELECT id 
+        FROM calificacion_actividad 
+        WHERE inscripcion_id = {$inscripcionId}
+          AND actividad_id = {$actividadId}
+        LIMIT 1
+    ";
+
+        $califExiste = ExamenIntento::SQL($sqlBuscarCalif);
+
+        if (empty($califExiste)) {
+            // Insertar nueva calificación
+            $sqlInsert = "
+            INSERT INTO calificacion_actividad 
+            (inscripcion_id, actividad_id, calificacion, observaciones, created_at, updated_at)
+            VALUES 
+            ({$inscripcionId}, {$actividadId}, " . (float)$calificacion . ", " .
+                ($observaciones ? "'" . addslashes($observaciones) . "'" : "NULL") . ", NOW(), NOW())
+        ";
+            ExamenIntento::SQL($sqlInsert);
+            error_log("✅ Calificación insertada en bitácora: {$nombreActividad} = {$calificacion}");
+        } else {
+            // Actualizar calificación existente
+            $califId = (int)$califExiste[0]->id;
+            $sqlUpdate = "
+            UPDATE calificacion_actividad 
+            SET calificacion = " . (float)$calificacion . ",
+                observaciones = " . ($observaciones ? "'" . addslashes($observaciones) . "'" : "NULL") . ",
+                updated_at = NOW()
+            WHERE id = {$califId}
+            LIMIT 1
+        ";
+            ExamenIntento::SQL($sqlUpdate);
+            error_log("✅ Calificación actualizada en bitácora: {$nombreActividad} = {$calificacion}");
+        }
+
+        error_log("✅ registrarExamenEnBitacora completado exitosamente");
     }
 
     // =========================
@@ -979,16 +1282,64 @@ class ExamenController
     // =========================
     //  Auto-calificador (0..1)
     // =========================
-    private static function autoCalificar(string $tipo, $respJson, ?string $respTexto, array $corr): float
+    private static function autoCalificar(string $tipo, $respJson, ?string $respTexto, array $corr, ?array $opcionesOrden = null): float
     {
         try {
+            // Debug logging
+            error_log("AutoCalificar - Tipo: {$tipo}");
+            error_log("AutoCalificar - RespJson: " . json_encode($respJson));
+            error_log("AutoCalificar - Correcta: " . json_encode($corr));
+
             if ($tipo === 'opcion_multiple') {
                 $sel = $respJson['seleccion'] ?? null;
                 $ok = $corr['correcta'] ?? null;
-                if (!is_array($sel) || !is_array($ok)) return 0.0;
+
+                // ⭐ FIX: Normalizar a arrays
+                if (!is_array($sel)) {
+                    $sel = $sel !== null && $sel !== '' ? [$sel] : [];
+                }
+                if (!is_array($ok)) {
+                    $ok = $ok !== null && $ok !== '' ? [$ok] : [];
+                }
+
+                // Convertir a enteros
+                $sel = array_map('intval', array_values($sel));
+                $ok = array_map('intval', array_values($ok));
+
+                error_log("AutoCalificar OM - Selección original: " . json_encode($sel));
+                error_log("AutoCalificar OM - Correcta: " . json_encode($ok));
+
+                // ⭐ FIX: Si hay opciones_orden (mezcla), traducir índices
+                if ($opcionesOrden !== null) {
+                    $perm = $opcionesOrden['opciones'] ?? $opcionesOrden['items'] ?? null;
+
+                    if (is_array($perm)) {
+                        error_log("AutoCalificar OM - Permutación: " . json_encode($perm));
+
+                        // perm[i] = índice original del item en posición i del array mezclado
+                        // Si el alumno seleccionó posición 2, el índice original es perm[2]
+                        $selOriginal = [];
+                        foreach ($sel as $posMezclada) {
+                            if (isset($perm[$posMezclada])) {
+                                $selOriginal[] = $perm[$posMezclada];
+                            }
+                        }
+                        $sel = $selOriginal;
+                        error_log("AutoCalificar OM - Selección traducida a originales: " . json_encode($sel));
+                    }
+                }
+
+                // Ordenar para comparar
                 sort($sel);
                 sort($ok);
-                return ($sel === $ok) ? 1.0 : 0.0;
+
+                error_log("AutoCalificar OM - Selección final: " . json_encode($sel));
+                error_log("AutoCalificar OM - Correcta final: " . json_encode($ok));
+
+                $resultado = ($sel === $ok) ? 1.0 : 0.0;
+                error_log("AutoCalificar OM - Resultado: {$resultado}");
+
+                return $resultado;
             }
 
             if ($tipo === 'verdadero_falso') {
@@ -1029,8 +1380,65 @@ class ExamenController
             if ($tipo === 'ordenar') {
                 $ord = $respJson['orden'] ?? null;
                 $ok = $corr['orden'] ?? null;
-                if (!is_array($ord) || !is_array($ok)) return 0.0;
-                return ($ord === $ok) ? 1.0 : 0.0;
+
+                if (!is_array($ord) || !is_array($ok)) {
+                    error_log("AutoCalificar Ordenar - No son arrays");
+                    return 0.0;
+                }
+
+                if (count($ord) !== count($ok)) {
+                    error_log("AutoCalificar Ordenar - Longitudes diferentes");
+                    return 0.0;
+                }
+
+                // Normalizar a enteros
+                $ord = array_values(array_map('intval', $ord));
+                $ok = array_values(array_map('intval', $ok));
+
+                error_log("AutoCalificar Ordenar - Respuesta del alumno: " . json_encode($ord));
+                error_log("AutoCalificar Ordenar - Orden correcto original: " . json_encode($ok));
+
+                // ⭐ FIX: Si hay opciones_orden (mezcla), necesitamos transformar
+                if ($opcionesOrden !== null) {
+                    // El permutation guardado nos dice cómo se mezclaron los índices
+                    // Por ejemplo: [3, 1, 0, 2] significa que el item original 3 quedó en posición 0, etc.
+                    $perm = $opcionesOrden['items'] ?? $opcionesOrden['opciones'] ?? null;
+
+                    if (is_array($perm) && count($perm) === count($ok)) {
+                        error_log("AutoCalificar Ordenar - Permutación aplicada: " . json_encode($perm));
+
+                        // El alumno ordenó usando índices del array MEZCLADO
+                        // Necesitamos convertir su respuesta a índices ORIGINALES
+
+                        // La respuesta del alumno dice: "quiero el item que está en posición X del array mezclado"
+                        // Necesitamos traducir eso a: "quiero el item original Y"
+
+                        // Si el alumno puso [0, 1, 2, 3] significa:
+                        // - Posición 1: quiere el item que está en índice 0 del array mezclado
+                        // - Ese item es el original perm[0]
+
+                        $ordenOriginalDelAlumno = [];
+                        foreach ($ord as $posicionMezclada) {
+                            // El alumno seleccionó el item en posición $posicionMezclada del array mezclado
+                            // Ese item corresponde al índice original $perm[$posicionMezclada]
+                            $ordenOriginalDelAlumno[] = $perm[$posicionMezclada];
+                        }
+
+                        error_log("AutoCalificar Ordenar - Orden original del alumno: " . json_encode($ordenOriginalDelAlumno));
+
+                        // Ahora comparamos el orden original que el alumno armó con el orden correcto
+                        $resultado = ($ordenOriginalDelAlumno === $ok) ? 1.0 : 0.0;
+                        error_log("AutoCalificar Ordenar - Resultado: {$resultado}");
+
+                        return $resultado;
+                    }
+                }
+
+                // Si no hay mezcla, comparar directamente
+                $resultado = ($ord === $ok) ? 1.0 : 0.0;
+                error_log("AutoCalificar Ordenar - Resultado (sin mezcla): {$resultado}");
+
+                return $resultado;
             }
 
             if ($tipo === 'relacionar') {
@@ -1038,7 +1446,6 @@ class ExamenController
                 $ok = $corr['correctas'] ?? null;
                 if (!is_array($ans) || !is_array($ok)) return 0.0;
 
-                // normalizamos a strings ordenados
                 $norm = function ($arr) {
                     $out = [];
                     foreach ($arr as $p) {
@@ -1052,27 +1459,14 @@ class ExamenController
             }
 
             if ($tipo === 'abierta') {
-                // heurística simple por keywords si se proveen
-                $text = trim(mb_strtolower((string)$respTexto));
-                if ($text === '') return 0.0;
-
-                $keywords = $corr['keywords'] ?? [];
-                $minHits = (int)($corr['min_hits'] ?? 1);
-
-                if (!is_array($keywords) || empty($keywords)) return 0.0;
-
-                $hits = 0;
-                foreach ($keywords as $k) {
-                    $k = trim(mb_strtolower((string)$k));
-                    if ($k !== '' && mb_strpos($text, $k) !== false) $hits++;
-                }
-
-                return ($hits >= $minHits) ? 1.0 : 0.0;
+                // ⭐ FIX: Las preguntas abiertas NO se autocalifican
+                error_log("AutoCalificar Abierta - NO se autocalifica, requiere revisión manual");
+                return 0.0; // El docente debe calificar manualmente
             }
 
-            // default
             return 0.0;
         } catch (\Throwable $e) {
+            error_log("Error en autoCalificar: " . $e->getMessage());
             return 0.0;
         }
     }
