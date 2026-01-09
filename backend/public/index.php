@@ -58,9 +58,13 @@ $router->group(function (Router $router) {
 
 
   // Docente
+  $router->options('/api/docente/clase/{seccion_id}/bitacora/import', function () {}, []);
+  $router->options('/api/docente/clase/{seccion_id}/bitacora/update', function () {}, []);
   $router->get('/api/docente/clases', [DocenteController::class, 'getClases']);
   $router->get('/api/docente/clases/{codigo_periodo}', [DocenteController::class, 'getClases']);
   $router->get('/api/docente/clase/{seccion_id}', [DocenteController::class, 'getClaseDetalle']);
+  $router->post('/api/docente/clase/{seccion_id}/bitacora/import', [DocenteController::class, 'importBitacora']);
+  $router->post('/api/docente/clase/{seccion_id}/bitacora/update', [DocenteController::class, 'updateBitacora']);
 
   // ===== BANCO =====
   $router->options('/api/banco/{recurso}', function () {}, []);
@@ -97,22 +101,22 @@ $router->group(function (Router $router) {
   $router->get('/api/examenes/examen/{examen_id}', [ExamenController::class, 'getExamenDetalle']);
   $router->put('/api/examenes/examen/{examen_id}', [ExamenController::class, 'updateExamen']);
   $router->delete('/api/examenes/examen/{examen_id}', [ExamenController::class, 'deleteExamen']);
-  
+
   $router->post('/api/examenes/examen/{examen_id}/armar', [ExamenController::class, 'armarExamen']);
   $router->post('/api/examenes/examen/{examen_id}/publicar', [ExamenController::class, 'publicarExamen']);
   $router->post('/api/examenes/examen/{examen_id}/cerrar', [ExamenController::class, 'cerrarExamen']);
-  
+
   $router->get('/api/examenes/mis-examenes', [ExamenController::class, 'getMisExamenes']);
   $router->post('/api/examenes/examen/{examen_id}/iniciar', [ExamenController::class, 'iniciarIntento']);
   $router->post('/api/examenes/intento/{intento_id}/responder', [ExamenController::class, 'guardarRespuesta']);
   $router->post('/api/examenes/intento/{intento_id}/finalizar', [ExamenController::class, 'finalizarIntento']);
   $router->get('/api/examenes/intento/{intento_id}', [ExamenController::class, 'getIntento']);
-  
+
   $router->get('/api/examenes/examen/{examen_id}/intentos', [ExamenController::class, 'getIntentosExamen']);
   $router->get('/api/examenes/intento/{intento_id}/detalle', [ExamenController::class, 'getIntentoDetalle']);
   $router->post('/api/examenes/intento/{intento_id}/calificar', [ExamenController::class, 'calificarIntento']);
   $router->post('/api/examenes/intento/{intento_id}/aplicar-bitacora', [ExamenController::class, 'aplicarCalificacionBitacora']);
-  
+
   $router->put('/api/examenes/examen/{examen_id}/pregunta/{pregunta_version_id}', [ExamenController::class, 'updatePuntosPregunta']);
   $router->delete('/api/examenes/examen/{examen_id}/pregunta/{pregunta_version_id}', [ExamenController::class, 'deletePreguntaExamen']);
   $router->get('/api/examenes/mis-intentos/{examen_id}', [ExamenController::class, 'getMisIntentos']);
