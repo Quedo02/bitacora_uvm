@@ -769,7 +769,15 @@ SELECT
 
     MAX(CASE WHEN v.componente='blackboard' THEN v.calificacion_componente END) AS bb_calc,
     MAX(CASE WHEN v.componente='continua'   THEN v.calificacion_componente END) AS ec_calc,
-    ep.calificacion AS ex_parcial,
+    (
+        SELECT AVG(COALESCE(ei.calif_final, ei.calif_auto, 0))
+        FROM examen_intento ei
+        JOIN examen e ON e.id = ei.examen_id
+        WHERE ei.inscripcion_id = i.id
+        AND e.tipo = 'parcial'
+        AND e.parcial_id = p.id
+        AND ei.estado IN ('enviado', 'revisado')
+    ) AS ex_parcial,
 
     MAX(CASE WHEN sc.tipo='blackboard' THEN sc.peso_porcentaje END) AS peso_bb,
     MAX(CASE WHEN sc.tipo='continua'   THEN sc.peso_porcentaje END) AS peso_ec,
@@ -783,7 +791,15 @@ SELECT
             COALESCE(MAX(CASE WHEN v.componente='continua' THEN v.calificacion_componente END), 0)
             * COALESCE(MAX(CASE WHEN sc.tipo='continua' THEN sc.peso_porcentaje END), 0)
             +
-            COALESCE(ep.calificacion, 0)
+            COALESCE((
+                SELECT AVG(COALESCE(ei2.calif_final, ei2.calif_auto, 0))
+                FROM examen_intento ei2
+                JOIN examen e2 ON e2.id = ei2.examen_id
+                WHERE ei2.inscripcion_id = i.id
+                AND e2.tipo = 'parcial'
+                AND e2.parcial_id = p.id
+                AND ei2.estado IN ('enviado', 'revisado')
+            ), 0)
             * COALESCE(MAX(CASE WHEN sc.tipo='examen' THEN sc.peso_porcentaje END), 0)
         ) / 100
     , 2) AS final_parcial

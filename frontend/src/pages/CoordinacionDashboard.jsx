@@ -382,7 +382,7 @@ export default function CoordinacionDashboard({ currentUser }) {
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="Carreras" value={stats.carreras} icon={Building2} />
             <StatCard label="Materias" value={stats.materias} icon={BookOpen} />
-            <StatCard label="Secciones" value={stats.secciones} icon={Layers} />
+            <StatCard label="Clases" value={stats.secciones} icon={Layers} />
             <StatCard label="Alumnos" value={stats.alumnos} icon={Users} />
           </div>
         )}

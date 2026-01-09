@@ -1,3 +1,4 @@
+// src/App.jsx
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import api from './api/axios';
@@ -5,12 +6,19 @@ import api from './api/axios';
 import AppLayout from './components/layout/AppLayout.jsx';
 import ProtectedRoute from './components/layout/ProtectedRoute.jsx';
 import Login from './pages/Login.jsx';
+import NotFound from './pages/NotFound.jsx';
 import CoordinacionDashboard from './pages/CoordinacionDashboard.jsx';
 import CoordinacionPersonas from './pages/CoordinacionPersonas.jsx';
 import DocenteClases from './pages/DocenteClases.jsx';
 import DocenteClaseDetalle from './pages/DocenteClaseDetalle.jsx';
 import BancoPreguntas from './pages/BancoPreguntas.jsx';
-import ExamenesDashboard from './pages/ExamenesDashboard.jsx';
+import ExamenesListado from "./pages/ExamenesListado";
+import ExamenEditor from "./pages/ExamenEditor";
+import ExamenAlumno from "./pages/ExamenAlumno";
+import ExamenResultados from "./pages/ExamenResultados";
+import MisExamenesAlumno from './pages/MisExamenesAlumno.jsx';
+import IntentoDetalle from "./pages/IntentoDetalle";
+import ResultadoAlumno from './pages/ResultadoAlumno.jsx';
 
 function unwrapUser(data) {
   if (!data) return null;
@@ -18,34 +26,44 @@ function unwrapUser(data) {
   return data;
 }
 
+// Componente para redirigir a la ruta por defecto según el rol
+function RoleBasedRedirect({ user }) {
+  const roleId = user?.rol_id ?? user?.role_id;
+  
+  const defaultRoutes = {
+    1: '/banco',                    // Admin
+    2: '/coordinacion/dashboard',   // Coordinador
+    3: '/docente/clases',           // Docente TC
+    4: '/docente/clases',           // Docente
+    5: '/alumno/examenes',          // Estudiante
+  };
+  
+  const targetRoute = defaultRoutes[roleId] || '/login';
+  return <Navigate to={targetRoute} replace />;
+}
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [initialized, setInitialized] = useState(false);
 
   const onLogin = async (correo, password) => {
-    // Backend setea cookie HttpOnly aquí
     await api.post('/api/auth/login', { correo, password });
-
-    // Luego pedimos /me para obtener user
     const me = await api.get('/api/auth/user');
     setUser(unwrapUser(me.data));
   };
 
   const onLogout = async () => {
-    // Intento POST y fallback a GET por si tu router usa otro método
     try {
       await api.post('/api/auth/logout');
     } catch {
-        await api.get('/api/auth/logout');
+      await api.get('/api/auth/logout');
     }
-
-    localStorage.removeItem('token'); // limpieza por si quedó
+    localStorage.removeItem('token');
     setUser(null);
   };
 
   useEffect(() => {
     (async () => {
-      // Asegura limpieza del flujo viejo
       localStorage.removeItem('token');
 
       try {
@@ -62,8 +80,13 @@ export default function App() {
   return (
     <BrowserRouter basename="/app">
       <Routes>
+        {/* Ruta pública de login */}
         <Route path="/login" element={<Login onLogin={onLogin} />} />
+        
+        {/* Página 404 */}
+        <Route path="/404" element={<NotFound />} />
 
+        {/* Rutas protegidas */}
         <Route
           path="/"
           element={
@@ -72,15 +95,25 @@ export default function App() {
             </ProtectedRoute>
           }
         >
+          {/* Redirige desde la raíz a la ruta por defecto según el rol */}
+          <Route 
+            index 
+            element={
+              user ? <RoleBasedRedirect user={user} /> : <Navigate to="/login" replace />
+            } 
+          />
+
+          {/* Rutas de coordinación */}
           <Route
             path="coordinacion/dashboard"
             element={<CoordinacionDashboard currentUser={user} />}
           />
-
           <Route
             path="coordinacion/personas"
             element={<CoordinacionPersonas currentUser={user} />}
           />
+
+          {/* Rutas de docentes */}
           <Route
             path="docente/clases"
             element={<DocenteClases currentUser={user} />}
@@ -90,6 +123,28 @@ export default function App() {
             element={<DocenteClaseDetalle currentUser={user} />}
           />
           <Route
+            path="docente/examenes"
+            element={<ExamenesListado currentUser={user} />}
+          />
+          <Route
+            path="docente/examenes/:seccionId"
+            element={<ExamenesListado currentUser={user} />}
+          />
+          <Route
+            path="docente/examenes/:seccionId/editor/:examenId"
+            element={<ExamenEditor currentUser={user} />}
+          />
+          <Route
+            path="docente/examenes/:seccionId/resultados/:examenId"
+            element={<ExamenResultados currentUser={user} />}
+          />
+          <Route
+            path="docente/examenes/:seccionId/intento/:intentoId"
+            element={<IntentoDetalle currentUser={user} />}
+          />
+
+          {/* Banco de preguntas */}
+          <Route
             path="banco"
             element={<BancoPreguntas currentUser={user} />}
           />
@@ -97,19 +152,24 @@ export default function App() {
             path="coordinacion/banco"
             element={<BancoPreguntas currentUser={user} />}
           />
+
+          {/* Rutas de alumnos */}
           <Route
-            path="examenes"
-            element={<ExamenesDashboard currentUser={user} />}
+            path="alumno/examenes"
+            element={<MisExamenesAlumno currentUser={user} />}
           />
           <Route
-            path="docente/examenes"
-            element={<ExamenesDashboard currentUser={user} />}
+            path="alumno/examen/:examenId"
+            element={<ExamenAlumno currentUser={user} />}
           />
           <Route
-            path="docente/examenes/:seccionId"
-            element={<ExamenesDashboard currentUser={user} />}
+            path="alumno/examen/:examenId/resultado/:intentoId"
+            element={<ResultadoAlumno currentUser={user} />}
           />
         </Route>
+
+        {/* Cualquier otra ruta redirige a 404 */}
+        <Route path="*" element={<Navigate to="/404" replace />} />
       </Routes>
     </BrowserRouter>
   );
